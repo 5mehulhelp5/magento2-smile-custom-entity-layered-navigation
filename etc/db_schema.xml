@@ -1,19 +1,4 @@
 <?xml version="1.0"?>
-<!--
-/**
- * NOTICE OF LICENSE
- *
- * This source file is subject to the Open Software License (OSL 3.0)
- * that is bundled with this package in the file LICENSE.txt.
- * It is also available through the world-wide-web at this URL:
- * https://opensource.org/licenses/OSL-3.0
- *
- * @category  Amadeco
- * @package   Amadeco_SmileCustomEntityLayeredNavigation
- * @copyright Copyright (c) Amadeco (https://www.amadeco.fr) - ILan Parmentier
- * @license   https://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
- */
--->
 <schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
     <table name="smile_custom_entity_eav_attribute" resource="default" engine="innodb" comment="Custom Entity EAV Attribute">
@@ -38,33 +23,33 @@
         <constraint xsi:type="primary" referenceId="PRIMARY">
             <column name="index_id"/>
         </constraint>
-        <constraint xsi:type="foreign" referenceId="AMADECO_CUST_ENT_INDEX_ENTITY_ID_SMILE_CUST_ENT_ENTITY_ID"
+        <constraint xsi:type="foreign" referenceId="FK_AMADECO_ENT_IDX_ENT_ID"
                     table="amadeco_custom_entity_index_eav_idx" column="entity_id"
                     referenceTable="smile_custom_entity" referenceColumn="entity_id"
                     onDelete="CASCADE"/>
-        <constraint xsi:type="foreign" referenceId="AMADECO_CUST_ENT_INDEX_ATTR_ATTR_ID_EAV_ATTR_ATTR_ID"
+        <constraint xsi:type="foreign" referenceId="FK_AMADECO_ENT_IDX_ATTR_ID"
                     table="amadeco_custom_entity_index_eav_idx" column="attribute_id"
                     referenceTable="eav_attribute" referenceColumn="attribute_id"
                     onDelete="CASCADE"/>
-        <constraint xsi:type="foreign" referenceId="AMADECO_CUST_ENT_INDEX_ATTR_STORE_ID_STORE_STORE_ID"
+        <constraint xsi:type="foreign" referenceId="FK_AMADECO_ENT_IDX_STORE_ID"
                     table="amadeco_custom_entity_index_eav_idx" column="store_id"
                     referenceTable="store" referenceColumn="store_id"
                     onDelete="CASCADE"/>
 
-        <index referenceId="AMADECO_CUST_ENT_INDEX_ATTR_STORE_ATTR_VALUE" indexType="btree">
+        <index referenceId="IDX_AMADECO_ENT_IDX_STORE_ATTR_VAL" indexType="btree">
             <column name="store_id"/>
             <column name="attribute_id"/>
             <column name="value"/>
         </index>
-        <index referenceId="AMADECO_CUST_ENT_INDEX_ATTR_ENTITY_ATTR_STORE" indexType="btree">
+        <index referenceId="IDX_AMADECO_ENT_IDX_ENT_ATTR_STORE" indexType="btree">
             <column name="entity_id"/>
             <column name="attribute_id"/>
             <column name="store_id"/>
         </index>
-        <index referenceId="AMADECO_CUST_ENT_INDEX_ATTR_ENTITY_ID" indexType="btree">
+        <index referenceId="IDX_AMADECO_ENT_IDX_ENT_ID" indexType="btree">
             <column name="entity_id"/>
         </index>
-        <index referenceId="AMADECO_CUST_ENT_INDEX_ATTR_ATTRIBUTE_ID" indexType="btree">
+        <index referenceId="IDX_AMADECO_ENT_IDX_ATTR_ID" indexType="btree">
             <column name="attribute_id"/>
         </index>
     </table>
