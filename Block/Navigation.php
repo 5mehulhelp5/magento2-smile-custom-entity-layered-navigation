@@ -22,7 +22,6 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\AvailabilityFlagInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterList;
-use Magento\Framework\App\ObjectManager;
 
 /**
  * Layered Navigation View Block for Custom Entities.
@@ -50,8 +49,8 @@ class Navigation extends Template
     public function __construct(
         Context $context,
         LayerResolver $layerResolver,
-        protected FilterList $filterList,
-        protected AvailabilityFlagInterface $visibilityFlag,
+        protected readonly FilterList $filterList,
+        protected readonly AvailabilityFlagInterface $visibilityFlag,
         array $data = []
     ) {
         $this->entityLayer = $layerResolver->get();
