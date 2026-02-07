@@ -18,11 +18,9 @@ namespace Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList;
 
 use Magento\Framework\Data\Helper\PostHelper;
 use Magento\Framework\Url\EncoderInterface;
-use Magento\Framework\App\ObjectManager;
-use Magento\Framework\Api\SearchCriteriaBuilder;
-use Magento\Framework\Api\SearchResultsInterface;
 use Magento\Framework\View\Element\Template;
-use Smile\CustomEntity\Api\CustomEntityRepositoryInterface;
+use Magento\Framework\Data\Form\FormKey;
+use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Helper\SetList;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Config\Source\SortBy;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Set\SetList\Toolbar as ToolbarModel;
@@ -38,57 +36,43 @@ class Toolbar extends Template
 {
     /**
      * Set collection
-     *
-     * @var \Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection
      */
-    protected $_collection = null;
+    protected ?Collection $collection = null;
 
     /**
      * List of available limits
-     *
-     * @var array
      */
-    protected $_availableLimit = null;
+    protected ?array $availableLimit = null;
 
     /**
      * List of available order fields
-     *
-     * @var array
      */
-    protected $_availableOrder = null;
+    protected ?array $availableOrder = null;
 
     /**
      * List of available view types
-     *
-     * @var array
      */
-    protected $_availableMode = [];
+    protected array $availableMode = [];
 
     /**
      * Is enable View switcher
-     *
-     * @var bool
      */
-    protected $_enableViewSwitcher = true;
+    protected bool $enableViewSwitcher = true;
 
     /**
-     * @var bool
+     * Is Expanded
      */
-    protected $_isExpanded = true;
+    protected bool $isExpanded = true;
 
     /**
      * Default Order field
-     *
-     * @var string
      */
-    protected $_orderField = null;
+    protected ?string $orderField = null;
 
     /**
      * Default direction
-     *
-     * @var string
      */
-    protected $_direction = SetList::DEFAULT_SORT_DIRECTION;
+    protected string $direction = SetList::DEFAULT_SORT_DIRECTION;
 
     /**
      * @var string
@@ -96,21 +80,13 @@ class Toolbar extends Template
     protected $_template = 'Smile_CustomEntity::set/list/toolbar.phtml';
 
     /**
-     * @var \Magento\Framework\Data\Form\FormKey
-     */
-    private $formKey;
-
-    /**
      * @param Template\Context $context
      * @param ToolbarModel $toolbarModel
      * @param EncoderInterface $urlEncoder
      * @param SetList $setListHelper
      * @param PostHelper $postDataHelper
-     * @param CustomEntityRepositoryInterface $customEntityRepository
+     * @param FormKey $formKey
      * @param array $data
-     * @param FormKey|null $formKey
-     *
-     * @SuppressWarnings(PHPMD.ExcessiveParameterList)
      */
     public function __construct(
         Template\Context $context,
@@ -118,41 +94,32 @@ class Toolbar extends Template
         protected EncoderInterface $urlEncoder,
         protected SetList $setListHelper,
         protected PostHelper $postDataHelper,
-        private CustomEntityRepositoryInterface $customEntityRepository,
-        array $data = [],
-        ?\Magento\Framework\Data\Form\FormKey $formKey = null
+        protected FormKey $formKey,
+        array $data = []
     ) {
-        $this->toolbarModel = $toolbarModel;
-        $this->urlEncoder = $urlEncoder;
-        $this->_setListHelper = $setListHelper;
-        $this->postDataHelper = $postDataHelper;
-
-        $this->formKey = $formKey ?: ObjectManager::getInstance()->get(
-            \Magento\Framework\Data\Form\FormKey::class
-        );
         parent::__construct($context, $data);
     }
 
     /**
      * Set collection to pager
      *
-     * @param \Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection $collection
+     * @param Collection $collection
      * @return $this
      */
     public function setCollection($collection)
     {
-        $this->_collection = $collection;
+        $this->collection = $collection;
 
-        $this->_collection->setCurPage($this->getCurrentPage());
+        $this->collection->setCurPage($this->getCurrentPage());
 
         // we need to set pagination only if passed value integer and more that 0
         $limit = (int)$this->getLimit();
         if ($limit) {
-            $this->_collection->setPageSize($limit);
+            $this->collection->setPageSize($limit);
         }
 
         if ($this->getCurrentOrder()) {
-            $this->_collection->setOrder($this->getCurrentOrder(), $this->getCurrentDirection());
+            $this->collection->setOrder($this->getCurrentOrder(), $this->getCurrentDirection());
         }
         return $this;
     }
@@ -160,11 +127,11 @@ class Toolbar extends Template
     /**
      * Return products collection instance
      *
-     * @return \Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection
+     * @return Collection|null
      */
-    public function getCollection(): \Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection|null
+    public function getCollection(): ?Collection
     {
-        return $this->_collection;
+        return $this->collection;
     }
 
     /**
@@ -223,7 +190,7 @@ class Toolbar extends Template
             strtolower($this->toolbarModel->getDirection()) : '';
 
         if (!$dir || !in_array($dir, $directions)) {
-            $dir = $this->_direction;
+            $dir = $this->direction;
         }
 
         $this->setData('_current_grid_direction', $dir);
@@ -239,8 +206,8 @@ class Toolbar extends Template
     public function setDefaultOrder($field)
     {
         $this->loadAvailableOrders();
-        if (isset($this->_availableOrder[$field])) {
-            $this->_orderField = $field;
+        if (isset($this->availableOrder[$field])) {
+            $this->orderField = $field;
         }
         return $this;
     }
@@ -254,7 +221,7 @@ class Toolbar extends Template
     public function setDefaultDirection($dir)
     {
         if ($dir && in_array(strtolower($dir), ['asc', 'desc'])) {
-            $this->_direction = strtolower($dir);
+            $this->direction = strtolower($dir);
         }
         return $this;
     }
@@ -267,7 +234,7 @@ class Toolbar extends Template
     public function getAvailableOrders()
     {
         $this->loadAvailableOrders();
-        return $this->_availableOrder;
+        return $this->availableOrder;
     }
 
     /**
@@ -278,7 +245,7 @@ class Toolbar extends Template
      */
     public function setAvailableOrders($orders)
     {
-        $this->_availableOrder = $orders;
+        $this->availableOrder = $orders;
         return $this;
     }
 
@@ -287,12 +254,12 @@ class Toolbar extends Template
      *
      * @param string $order
      * @param string $value
-     * @return \Magento\Catalog\Block\Product\ProductList\Toolbar
+     * @return $this
      */
     public function addOrderToAvailableOrders($order, $value)
     {
         $this->loadAvailableOrders();
-        $this->_availableOrder[$order] = $value;
+        $this->availableOrder[$order] = $value;
         return $this;
     }
 
@@ -305,8 +272,8 @@ class Toolbar extends Template
     public function removeOrderFromAvailableOrders($order)
     {
         $this->loadAvailableOrders();
-        if (isset($this->_availableOrder[$order])) {
-            unset($this->_availableOrder[$order]);
+        if (isset($this->availableOrder[$order])) {
+            unset($this->availableOrder[$order]);
         }
         return $this;
     }
@@ -356,14 +323,13 @@ class Toolbar extends Template
      */
     public function getCurrentMode()
     {
-
         $mode = $this->_getData('_current_grid_mode');
         if ($mode) {
             return $mode;
         }
-        $defaultMode = $this->_setListHelper->getDefaultViewMode($this->getModes());
+        $defaultMode = $this->setListHelper->getDefaultViewMode($this->getModes());
         $mode = $this->toolbarModel->getMode();
-        if (!$mode || !isset($this->_availableMode[$mode])) {
+        if (!$mode || !isset($this->availableMode[$mode])) {
             $mode = $defaultMode;
         }
 
@@ -389,10 +355,10 @@ class Toolbar extends Template
      */
     public function getModes()
     {
-        if ($this->_availableMode === []) {
-            $this->_availableMode = $this->_setListHelper->getAvailableViewMode();
+        if ($this->availableMode === []) {
+            $this->availableMode = $this->setListHelper->getAvailableViewMode();
         }
-        return $this->_availableMode;
+        return $this->availableMode;
     }
 
     /**
@@ -404,8 +370,8 @@ class Toolbar extends Template
     public function setModes($modes)
     {
         $this->getModes();
-        if (!isset($this->_availableMode)) {
-            $this->_availableMode = $modes;
+        if (!isset($this->availableMode)) {
+            $this->availableMode = $modes;
         }
         return $this;
     }
@@ -413,22 +379,22 @@ class Toolbar extends Template
     /**
      * Disable view switcher
      *
-     * @return \Magento\Catalog\Block\Product\ProductList\Toolbar
+     * @return $this
      */
     public function disableViewSwitcher()
     {
-        $this->_enableViewSwitcher = false;
+        $this->enableViewSwitcher = false;
         return $this;
     }
 
     /**
      * Enable view switcher
      *
-     * @return \Magento\Catalog\Block\Product\ProductList\Toolbar
+     * @return $this
      */
     public function enableViewSwitcher()
     {
-        $this->_enableViewSwitcher = true;
+        $this->enableViewSwitcher = true;
         return $this;
     }
 
@@ -439,28 +405,28 @@ class Toolbar extends Template
      */
     public function isEnabledViewSwitcher()
     {
-        return $this->_enableViewSwitcher;
+        return $this->enableViewSwitcher;
     }
 
     /**
      * Disable Expanded
      *
-     * @return \Magento\Catalog\Block\Product\ProductList\Toolbar
+     * @return $this
      */
     public function disableExpanded()
     {
-        $this->_isExpanded = false;
+        $this->isExpanded = false;
         return $this;
     }
 
     /**
      * Enable Expanded
      *
-     * @return \Magento\Catalog\Block\Product\ProductList\Toolbar
+     * @return $this
      */
     public function enableExpanded()
     {
-        $this->_isExpanded = true;
+        $this->isExpanded = true;
         return $this;
     }
 
@@ -471,7 +437,7 @@ class Toolbar extends Template
      */
     public function isExpanded()
     {
-        return $this->_isExpanded;
+        return $this->isExpanded;
     }
 
     /**
@@ -486,7 +452,7 @@ class Toolbar extends Template
         } elseif ($this->getCurrentMode() == 'grid' && ($default = $this->getDefaultGridPerPage())) {
             return $default;
         }
-        return $this->_setListHelper->getDefaultLimitPerPageValue($this->getCurrentMode());
+        return $this->setListHelper->getDefaultLimitPerPageValue($this->getCurrentMode());
     }
 
     /**
@@ -497,7 +463,7 @@ class Toolbar extends Template
      */
     public function setAvailableLimit(array $limits)
     {
-        $this->_availableLimit = $limits;
+        $this->availableLimit = $limits;
         return $this;
     }
 
@@ -508,10 +474,10 @@ class Toolbar extends Template
      */
     public function getAvailableLimit()
     {
-        if ($this->_availableLimit) {
-            return $this->_availableLimit;
+        if ($this->availableLimit) {
+            return $this->availableLimit;
         }
-        return $this->_setListHelper->getAvailableLimit($this->getCurrentMode());
+        return $this->setListHelper->getAvailableLimit($this->getCurrentMode());
     }
 
     /**
@@ -656,16 +622,16 @@ class Toolbar extends Template
      */
     public function getWidgetOptionsJson(array $customOptions = [])
     {
-        $defaultMode = $this->_setListHelper->getDefaultViewMode($this->getModes());
+        $defaultMode = $this->setListHelper->getDefaultViewMode($this->getModes());
         $options = [
             'mode' => ToolbarModel::MODE_PARAM_NAME,
             'direction' => ToolbarModel::DIRECTION_PARAM_NAME,
             'order' => ToolbarModel::ORDER_PARAM_NAME,
             'limit' => ToolbarModel::LIMIT_PARAM_NAME,
             'modeDefault' => $defaultMode,
-            'directionDefault' => $this->_direction,
+            'directionDefault' => $this->direction,
             'orderDefault' => $this->getOrderField(),
-            'limitDefault' => $this->_setListHelper->getDefaultLimitPerPageValue($defaultMode),
+            'limitDefault' => $this->setListHelper->getDefaultLimitPerPageValue($defaultMode),
             'url' => $this->getPagerUrl(),
             'formKey' => $this->formKey->getFormKey()
         ];
@@ -680,10 +646,10 @@ class Toolbar extends Template
      */
     protected function getOrderField()
     {
-        if ($this->_orderField === null) {
-            $this->_orderField = $this->_setListHelper->getDefaultSortField();
+        if ($this->orderField === null) {
+            $this->orderField = $this->setListHelper->getDefaultSortField();
         }
-        return $this->_orderField;
+        return $this->orderField;
     }
 
     /**
@@ -693,8 +659,8 @@ class Toolbar extends Template
      */
     private function loadAvailableOrders()
     {
-        if ($this->_availableOrder === null) {
-            $this->_availableOrder = SortBy::toArray();
+        if ($this->availableOrder === null) {
+            $this->availableOrder = SortBy::toArray();
         }
         return $this;
     }
