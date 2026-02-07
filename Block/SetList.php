@@ -25,6 +25,7 @@ use Smile\CustomEntity\Model\CustomEntity;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\CollectionFactory as CustomEntityCollectionFactory;
 use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Set\Attribute\Source\SortBy;
 
@@ -38,20 +39,21 @@ class SetList extends Template implements IdentityInterface
 {
     /**
      * Default toolbar block name
-     *
-     * @var string
      */
-    protected $_defaultToolbarBlock = Toolbar::class;
+    private string $defaultToolbarBlock = Toolbar::class;
 
     /**
      * Collection for the current attribute set
-     *
-     * @var Collection
      */
-    protected $_entityCollection;
+    private ?Collection $entityCollection = null;
 
     /**
-     * @param Template\Context $context
+     * Layer model
+     */
+    private Layer $entityLayer;
+
+    /**
+     * @param Context $context
      * @param PostHelper $postDataHelper
      * @param CustomEntityCollectionFactory $customEntityCollectionFactory
      * @param LayerResolver $layerResolver
@@ -64,7 +66,7 @@ class SetList extends Template implements IdentityInterface
         private LayerResolver $layerResolver,
         array $data = []
     ) {
-        $this->_entityLayer = $layerResolver->get();
+        $this->entityLayer = $layerResolver->get();
 
         parent::__construct(
             $context,
@@ -75,36 +77,25 @@ class SetList extends Template implements IdentityInterface
     /**
      * Retrieve loaded entity collection
      *
-     * The goal of this method is to choose whether the existing collection should be returned
-     * or a new one should be initialized.
-     *
-     * It is not just a caching logic, but also is a real logical check
-     * because there are two ways how collection may be stored inside the block:
-     *   - Entity collection may be passed externally by 'setCollection' method
-     *   - Entity collection may be requested internally from the current custom entity set Layer.
-     *
-     * And this method will return collection anyway,
-     * even when it did not pass externally and therefore isn't cached yet
-     *
-     * @return \Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection
+     * @return Collection
      */
     protected function _getEntityCollection(): Collection
     {
-        if (null === $this->_entityCollection) {
-            $this->_entityCollection = $this->getLayer()->getEntityCollection();
+        if (null === $this->entityCollection) {
+            $this->entityCollection = $this->getLayer()->getEntityCollection();
         }
 
-        return $this->_entityCollection;
+        return $this->entityCollection;
     }
 
     /**
      * Retrieve entity layer model
      *
-     * @return \Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer
+     * @return Layer
      */
-    public function getLayer()
+    public function getLayer(): Layer
     {
-        return $this->_entityLayer;
+        return $this->entityLayer;
     }
 
     /**
@@ -131,7 +122,7 @@ class SetList extends Template implements IdentityInterface
      *
      * @return string
      */
-    public function getMode()
+    public function getMode(): string
     {
         if ($this->getChildBlock('toolbar')) {
             return $this->getChildBlock('toolbar')->getCurrentMode();
@@ -147,7 +138,7 @@ class SetList extends Template implements IdentityInterface
      *
      * @return string
      */
-    private function getDefaultListingMode()
+    private function getDefaultListingMode(): string
     {
         // default Toolbar when the toolbar layout is not used
         $defaultToolbar = $this->getToolbarBlock();
@@ -161,7 +152,7 @@ class SetList extends Template implements IdentityInterface
             $mode = $defaultToolbar->getCurrentMode();
         }
 
-        return $mode;
+        return (string)$mode;
     }
 
     /**
@@ -194,7 +185,7 @@ class SetList extends Template implements IdentityInterface
      *
      * @param Collection $collection
      */
-    private function addToolbarBlock(Collection $collection)
+    private function addToolbarBlock(Collection $collection): void
     {
         $toolbarLayout = $this->getToolbarFromLayout();
 
@@ -208,14 +199,15 @@ class SetList extends Template implements IdentityInterface
      *
      * @return Toolbar
      */
-    public function getToolbarBlock()
+    public function getToolbarBlock(): Toolbar
     {
         $block = $this->getToolbarFromLayout();
 
         if (!$block) {
+            $blockName = $this->getNameInLayout() ? $this->getNameInLayout() . '_toolbar' : 'smile_custom_entity_toolbar';
             $block = $this->getLayout()->createBlock(
-                $this->_defaultToolbarBlock,
-                uniqid(microtime())
+                $this->defaultToolbarBlock,
+                $blockName
             );
         }
 
@@ -225,7 +217,7 @@ class SetList extends Template implements IdentityInterface
     /**
      * Get toolbar block from layout
      *
-     * @return Toolbar|bool
+     * @return Toolbar|false
      */
     private function getToolbarFromLayout()
     {
@@ -269,14 +261,14 @@ class SetList extends Template implements IdentityInterface
      */
     public function setCollection($collection)
     {
-        $this->_entityCollection = $collection;
+        $this->entityCollection = $collection;
         return $this;
     }
 
     /**
      * Add attribute.
      *
-     * @param array|string|integer|Element $code
+     * @param array|string|integer $code
      * @return $this
      */
     public function addAttribute($code)
@@ -288,7 +280,7 @@ class SetList extends Template implements IdentityInterface
     /**
      * Prepare Sort By fields from Custom Entity Set Data
      *
-     * @param $set
+     * @param AttributeSetInterface|null $set
      * @return $this
      */
     public function prepareSortableFieldsBySet($set)
@@ -337,47 +329,13 @@ class SetList extends Template implements IdentityInterface
     }
 
     /**
-     * Configures entity collection from a layer and returns its instance.
-     *
-     * Also in the scope of a entity collection configuration, this method initiates configuration of Toolbar.
-     * The reason to do this is because we have a bunch of legacy code
-     * where Toolbar configures several options of a collection and therefore this block depends on the Toolbar.
-     *
-     * This dependency leads to a situation where Toolbar sometimes called to configure a entity collection,
-     * and sometimes not.
-     *
-     * To unify this behavior and prevent potential bugs this dependency is explicitly called
-     * when entity collection initialized.
-     *
-     * @return Collection
-     */
-    private function initializeEntityCollection()
-    {
-        $layer = $this->getLayer();
-        $collection = $layer->getEntityCollection();
-
-        $this->prepareSortableFieldsBySet($layer->getCurrentAttributeSet());
-
-        $this->_eventManager->dispatch(
-            'amadeco_block_set_list_collection',
-            ['collection' => $collection]
-        );
-
-        return $collection;
-    }
-
-    /**
      * Configures the Toolbar block with options from this block and configured entity collection.
      *
-     * The purpose of this method is the one-way sharing of different sorting related data
-     * between this block, which is responsible for product list rendering,
-     * and the Toolbar block, whose responsibility is a rendering of these options.
-     *
-     * @param EntityList\Toolbar $toolbar
+     * @param Toolbar $toolbar
      * @param Collection $collection
      * @return void
      */
-    private function configureToolbar(Toolbar $toolbar, Collection $collection)
+    private function configureToolbar(Toolbar $toolbar, Collection $collection): void
     {
         // use sortable parameters
         $orders = $this->getAvailableOrders();
