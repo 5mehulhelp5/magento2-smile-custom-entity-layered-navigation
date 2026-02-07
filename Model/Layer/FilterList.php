@@ -19,70 +19,50 @@ namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Magento\Framework\ObjectManagerInterface;
 use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Smile\CustomEntity\Model\CustomEntity\Attribute;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
 
 /**
- * Filter List Model for Custom Entity Layered Navigation
+ * Filter List Model for Custom Entity Layered Navigation.
  *
- * Manages the available attribute filters for the current layer
+ * Manages the available attribute filters for the current layer.
+ * Filter types are injected via di.xml based on frontend_input type.
  */
 class FilterList implements ResetAfterRequestInterface
 {
-    public const ATTRIBUTE_FILTER = 'attribute';
-    public const BOOLEAN_FILTER = 'boolean';
-
     /**
      * @var AbstractFilter[]
      */
     private array $filters = [];
 
     /**
-     * @var ObjectManagerInterface
-     */
-    private ObjectManagerInterface $objectManager;
-
-    /**
-     * @var FilterableAttributeList
-     */
-    private FilterableAttributeList $filterableAttributes;
-
-    /**
      * @var string[]
      */
-    protected $filterTypes = [
-        self::ATTRIBUTE_FILTER => \Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\Attribute::class,
-        self::BOOLEAN_FILTER => \Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\Boolean::class
-    ];
+    private array $filterTypes;
 
     /**
      * @param ObjectManagerInterface $objectManager
      * @param FilterableAttributeList $filterableAttributes
-     * @param LoggerInterface $logger
-     * @param array $filters Filter types configuration
+     * @param array $filters Filter types configuration (injected via di.xml)
      */
     public function __construct(
-        ObjectManagerInterface $objectManager,
-        FilterableAttributeList $filterableAttributes,
+        private readonly ObjectManagerInterface $objectManager,
+        private readonly FilterableAttributeList $filterableAttributes,
         array $filters = []
     ) {
-        $this->objectManager = $objectManager;
-        $this->filterableAttributes = $filterableAttributes;
-
-        /** Override default filter type models */
-        $this->filterTypes = array_merge($this->filterTypes, $filters);
+        $this->filterTypes = $filters;
     }
 
     /**
      * Retrieve list of filters
      *
      * @param Layer $layer
-     * @return array|Filter\AbstractFilter[]
+     * @return AbstractFilter[]
      */
     public function getFilters(Layer $layer): array
     {
         if (!count($this->filters)) {
-            foreach ($this->filterableAttributes->getList() as $attribute) {
+            // Passing $layer to getList ensures attributes are filtered by the current Attribute Set ID
+            foreach ($this->filterableAttributes->getList($layer) as $attribute) {
                 $this->filters[] = $this->createAttributeFilter($attribute, $layer);
             }
         }
@@ -90,7 +70,7 @@ class FilterList implements ResetAfterRequestInterface
     }
 
     /**
-     * Create filter
+     * Create filter instance
      *
      * @param Attribute $attribute
      * @param Layer $layer
@@ -100,28 +80,28 @@ class FilterList implements ResetAfterRequestInterface
     {
         $filterClassName = $this->getAttributeFilterClass($attribute);
 
-        $filter = $this->objectManager->create(
+        return $this->objectManager->create(
             $filterClassName,
-            ['data' => ['attribute_model' => $attribute], 'layer' => $layer]
+            [
+                'data' => ['attribute_model' => $attribute],
+                'layer' => $layer
+            ]
         );
-        return $filter;
     }
 
     /**
-     * Get Attribute Filter Class Name
+     * Get Attribute Filter Class Name based on frontend input type
      *
      * @param Attribute $attribute
      * @return string
      */
     protected function getAttributeFilterClass(Attribute $attribute): string
     {
-        $filterClassName = $this->filterTypes[self::ATTRIBUTE_FILTER];
+        $frontendInput = $attribute->getFrontendInput();
 
-        if ($attribute->getFrontendInput() === 'boolean') {
-            $filterClassName = $this->filterTypes[self::BOOLEAN_FILTER];
-        }
-
-        return $filterClassName;
+        // Use the specific class mapped to the input type (e.g. 'boolean', 'multiselect')
+        // Fallback to 'select' mapping if the specific input type is not defined
+        return $this->filterTypes[$frontendInput] ?? $this->filterTypes['select'];
     }
 
     /**
