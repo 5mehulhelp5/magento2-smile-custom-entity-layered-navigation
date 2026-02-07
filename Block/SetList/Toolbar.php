@@ -69,7 +69,6 @@ class Toolbar extends NativeToolbar
         protected FormKey $formKey,
         array $data = []
     ) {
-        // Injection des dépendances natives pour satisfaire le contrat du parent
         parent::__construct(
             $context,
             $catalogSession,
@@ -83,7 +82,7 @@ class Toolbar extends NativeToolbar
     }
 
     /**
-     * Surcharge critique : Charge les options de tri des Entités (et non des Produits).
+     * Load available sort orders
      *
      * @return $this
      */
@@ -94,19 +93,6 @@ class Toolbar extends NativeToolbar
             $this->_availableOrder = SortBy::toArray();
         }
         return $this;
-    }
-
-    /**
-     * Retrieve available sort orders
-     *
-     * @return array
-     */
-    public function getAvailableOrders()
-    {
-        if ($this->_availableOrder === null) {
-            $this->_availableOrder = SortBy::toArray();
-        }
-        return $this->_availableOrder;
     }
 
     /**
