@@ -26,9 +26,7 @@ class StateKey implements StateKeyInterface
      */
     public function __construct(
         protected readonly StoreManagerInterface $storeManager
-    ) {
-        $this->storeManager = $storeManager;
-    }
+    ) {}
 
     /**
      * Build state key
