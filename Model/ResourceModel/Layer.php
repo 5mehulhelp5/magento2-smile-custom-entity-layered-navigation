@@ -16,12 +16,12 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
+use Magento\Eav\Model\Config as EavConfig;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
 use Psr\Log\LoggerInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
-use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
 
 /**
  * Layer Resource Model.
@@ -29,38 +29,33 @@ use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
  */
 class Layer
 {
-    private const INDEX_TABLE_ALIAS = 'idx';
-    private const AGGREGATION_FIELD = 'value'; // Column storing option IDs or boolean values
+    /**
+     * Entity type code for custom entities
+     */
+    private const ENTITY_TYPE_CODE = 'smile_custom_entity';
 
     /**
-     * @var ResourceConnection
+     * Attribute code for the 'is_active' status
      */
-    private ResourceConnection $resourceConnection;
+    private const IS_ACTIVE_ATTRIBUTE_CODE = 'is_active';
 
     /**
-     * @var LoggerInterface
+     * Column storing option IDs or boolean values in the index/int tables
      */
-    private LoggerInterface $logger;
-
-    /**
-     * @var State
-     */
-    private State $state;
+    private const AGGREGATION_FIELD = 'value';
 
     /**
      * @param ResourceConnection $resourceConnection
      * @param LoggerInterface $logger
      * @param State $state
+     * @param EavConfig $eavConfig
      */
     public function __construct(
-        ResourceConnection $resourceConnection,
-        LoggerInterface $logger,
-        State $state
-    ) {
-        $this->resourceConnection = $resourceConnection;
-        $this->logger = $logger;
-        $this->state = $state;
-    }
+        private readonly ResourceConnection $resourceConnection,
+        private readonly LoggerInterface $logger,
+        private readonly State $state,
+        private readonly EavConfig $eavConfig
+    ) {}
 
     /**
      * Get a SELECT object for entity IDs matching the currently applied filters,
@@ -77,10 +72,15 @@ class Layer
         $connection = $this->resourceConnection->getConnection();
         $indexTable = $this->resourceConnection->getTableName('amadeco_custom_entity_index_eav_idx');
         $entityTable = $this->resourceConnection->getTableName('smile_custom_entity');
+        $intTable = $this->resourceConnection->getTableName('smile_custom_entity_int');
 
         if (!$connection->isTableExists($indexTable)) {
             return null;
         }
+
+        // Optimization: Resolve Attribute ID in PHP to prevent Subquery in JOIN
+        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, self::IS_ACTIVE_ATTRIBUTE_CODE);
+        $activeAttributeId = (int) $activeAttribute->getAttributeId();
 
         $appliedFilters = $this->state->getFiltersData(); // ['attribute_id' => value(s), ...]
 
@@ -92,17 +92,16 @@ class Layer
         $select->from(['e' => $entityTable], ['entity_id'])
             ->where('e.attribute_set_id = ?', $attributeSetId);
 
+        // Optimized JOIN: Uses direct integer ID and AGGREGATION_FIELD constant
         $select->joinLeft(
-            ['ea' => $this->resourceConnection->getTableName('smile_custom_entity_int')],
-            "e.entity_id = ea.entity_id AND ea.attribute_id = (
-                SELECT attribute_id FROM eav_attribute
-                WHERE attribute_code = 'is_active' AND entity_type_id = (
-                    SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = 'smile_custom_entity'
-                )
-            ) AND ea.store_id IN (0, {$storeId})",
+            ['ea' => $intTable],
+            sprintf(
+                'e.entity_id = ea.entity_id AND ea.attribute_id = %d AND ea.store_id IN (0, %d)',
+                $activeAttributeId,
+                $storeId
+            ),
             []
-        )
-        ->where('ea.value = 1');
+        )->where('ea.' . self::AGGREGATION_FIELD . ' = 1');
 
         if (empty($appliedFilters)) {
             return $select;
@@ -116,7 +115,7 @@ class Layer
                 $joinConditions = [];
                 foreach ($value as $singleValue) {
                     $joinConditions[] = $connection->quoteInto(
-                        "{$alias}.value = ?",
+                        $alias . '.' . self::AGGREGATION_FIELD . ' = ?',
                         $singleValue
                     );
                 }
@@ -138,7 +137,7 @@ class Layer
                     (int)$attributeId,
                     $alias,
                     $storeId,
-                    $connection->quoteInto("{$alias}.value = ?", $value)
+                    $connection->quoteInto($alias . '.' . self::AGGREGATION_FIELD . ' = ?', $value)
                 );
             }
 
