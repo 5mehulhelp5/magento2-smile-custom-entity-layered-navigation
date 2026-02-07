@@ -30,34 +30,15 @@ namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 class Context implements ContextInterface
 {
     /**
-     * @var ItemCollectionProviderInterface
-     */
-    protected $collectionProvider;
-
-    /**
-     * @var StateKeyInterface
-     */
-    protected $stateKey;
-
-    /**
-     * @var CollectionFilterInterface
-     */
-    protected $collectionFilter;
-
-    /**
      * @param ItemCollectionProviderInterface $collectionProvider
      * @param StateKeyInterface $stateKey
      * @param CollectionFilterInterface $collectionFilter
      */
     public function __construct(
-        ItemCollectionProviderInterface $collectionProvider,
-        StateKeyInterface $stateKey,
-        CollectionFilterInterface $collectionFilter
-    ) {
-        $this->collectionProvider = $collectionProvider;
-        $this->stateKey = $stateKey;
-        $this->collectionFilter = $collectionFilter;
-    }
+        protected readonly ItemCollectionProviderInterface $collectionProvider,
+        protected readonly StateKeyInterface $stateKey,
+        protected readonly CollectionFilterInterface $collectionFilter
+    ) {}
 
     /**
      * @return ItemCollectionProviderInterface
