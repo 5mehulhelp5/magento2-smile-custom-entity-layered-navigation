@@ -25,18 +25,11 @@ use Psr\Log\LoggerInterface;
 class Full
 {
     /**
-     * @var ResourceIndexer
-     */
-    private $resourceIndexer;
-
-    /**
      * @param ResourceIndexer $resourceIndexer
      */
     public function __construct(
-        ResourceIndexer $resourceIndexer
-    ) {
-        $this->resourceIndexer = $resourceIndexer;
-    }
+        protected readonly ResourceIndexer $resourceIndexer
+    ) {}
 
     /**
      * Execute full indexation
