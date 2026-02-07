@@ -36,36 +36,6 @@ class Layered implements IndexerActionInterface, MviewActionInterface
     public const INDEXER_ID = 'amadeco_smile_custom_entity_layer_set';
 
     /**
-     * @var Layered\Action\FullFactory
-     */
-    private $fullActionFactory;
-
-    /**
-     * @var Layered\Action\RowsFactory
-     */
-    private $rowsActionFactory;
-
-    /**
-     * @var IndexerRegistry
-     */
-    private $indexerRegistry;
-
-    /**
-     * @var string
-     */
-    private $indexerId;
-
-    /**
-     * @var CacheContext
-     */
-    private $cacheContext;
-
-    /**
-     * @var IndexMutexInterface
-     */
-    private $indexMutex;
-
-    /**
      * @param Layered\Action\FullFactory $fullActionFactory
      * @param Layered\Action\RowsFactory $rowsActionFactory
      * @param IndexerRegistry $indexerRegistry
@@ -74,20 +44,13 @@ class Layered implements IndexerActionInterface, MviewActionInterface
      * @param string $indexerId
      */
     public function __construct(
-        Layered\Action\FullFactory $fullActionFactory,
-        Layered\Action\RowsFactory $rowsActionFactory,
-        IndexerRegistry $indexerRegistry,
-        CacheContext $cacheContext,
-        IndexMutexInterface $indexMutex,
-        string $indexerId = self::INDEXER_ID
-    ) {
-        $this->fullActionFactory = $fullActionFactory;
-        $this->rowsActionFactory = $rowsActionFactory;
-        $this->indexerRegistry = $indexerRegistry;
-        $this->cacheContext = $cacheContext;
-        $this->indexMutex = $indexMutex;
-        $this->indexerId = $indexerId;
-    }
+        protected readonly Layered\Action\FullFactory $fullActionFactory,
+        protected readonly Layered\Action\RowsFactory $rowsActionFactory,
+        protected readonly IndexerRegistry $indexerRegistry,
+        protected readonly CacheContext $cacheContext,
+        protected readonly IndexMutexInterface $indexMutex,
+        protected string $indexerId = self::INDEXER_ID
+    ) {}
 
     /**
      * Execute indexer on specified entities
