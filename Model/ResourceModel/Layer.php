@@ -16,13 +16,13 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
 use Magento\Eav\Model\Config as EavConfig;
 use Magento\Eav\Model\Entity\Attribute\ScopedAttributeInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
 use Psr\Log\LoggerInterface;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
 use Smile\ScopedEav\Api\Data\EntityInterface;
 
 /**
@@ -75,7 +75,7 @@ class Layer
             return null;
         }
 
-        // Retrieve is_active attribute configuration using the constant from EntityInterface
+        // Retrieve is_active attribute configuration using the interface constant
         $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, EntityInterface::IS_ACTIVE);
         $activeAttributeId = (int) $activeAttribute->getAttributeId();
         $isGlobal = $activeAttribute->getIsGlobal() == ScopedAttributeInterface::SCOPE_GLOBAL;
