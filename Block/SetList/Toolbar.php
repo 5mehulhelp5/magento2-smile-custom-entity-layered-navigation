@@ -16,122 +16,91 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList;
 
-use Magento\Framework\Data\Helper\PostHelper;
-use Magento\Framework\Url\EncoderInterface;
-use Magento\Framework\View\Element\Template;
-use Magento\Framework\Data\Form\FormKey;
-use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Helper\SetList;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Config\Source\SortBy;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Set\SetList\Toolbar as ToolbarModel;
+use Magento\Catalog\Block\Product\ProductList\Toolbar as NativeToolbar;
+use Magento\Catalog\Model\Config as CatalogConfig;
+use Magento\Catalog\Model\Product\ProductList\Toolbar as NativeToolbarModel;
+use Magento\Catalog\Model\Session as CatalogSession;
+use Magento\Framework\Data\Form\FormKey;
+use Magento\Framework\Url\EncoderInterface;
+use Magento\Framework\View\Element\Template\Context;
+use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 
 /**
- * Product list toolbar
+ * Custom Entity List Toolbar
  *
- * @SuppressWarnings(PHPMD.TooManyFields)
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
- * @since 100.0.2
+ * Extends Native Catalog Toolbar to inherit pagination/sorting logic
+ * while overriding state retrieval to support Custom Entity parameters.
  */
-class Toolbar extends Template
+class Toolbar extends NativeToolbar
 {
-    /**
-     * Set collection
-     */
-    protected ?Collection $collection = null;
-
-    /**
-     * List of available limits
-     */
-    protected ?array $availableLimit = null;
-
-    /**
-     * List of available order fields
-     */
-    protected ?array $availableOrder = null;
-
-    /**
-     * List of available view types
-     */
-    protected array $availableMode = [];
-
-    /**
-     * Is enable View switcher
-     */
-    protected bool $enableViewSwitcher = true;
-
-    /**
-     * Is Expanded
-     */
-    protected bool $isExpanded = true;
-
-    /**
-     * Default Order field
-     */
-    protected ?string $orderField = null;
-
-    /**
-     * Default direction
-     */
-    protected string $direction = SetList::DEFAULT_SORT_DIRECTION;
-
     /**
      * @var string
      */
     protected $_template = 'Smile_CustomEntity::set/list/toolbar.phtml';
 
     /**
-     * @param Template\Context $context
-     * @param ToolbarModel $toolbarModel
+     * @param Context $context
+     * @param CatalogSession $catalogSession
+     * @param CatalogConfig $catalogConfig
+     * @param NativeToolbarModel $toolbarModel
      * @param EncoderInterface $urlEncoder
+     * @param ToolbarModel $customToolbarModel
      * @param SetList $setListHelper
-     * @param PostHelper $postDataHelper
      * @param FormKey $formKey
      * @param array $data
      */
     public function __construct(
-        Template\Context $context,
-        protected ToolbarModel $toolbarModel,
-        protected EncoderInterface $urlEncoder,
+        Context $context,
+        CatalogSession $catalogSession,
+        CatalogConfig $catalogConfig,
+        NativeToolbarModel $toolbarModel,
+        EncoderInterface $urlEncoder,
+        protected ToolbarModel $customToolbarModel,
         protected SetList $setListHelper,
-        protected PostHelper $postDataHelper,
         protected FormKey $formKey,
         array $data = []
     ) {
-        parent::__construct($context, $data);
+        // Pass native dependencies to parent to satisfy constructor contract
+        parent::__construct(
+            $context,
+            $catalogSession,
+            $catalogConfig,
+            $toolbarModel,
+            $urlEncoder,
+            [], // Custom product list order not needed here
+            $data
+        );
     }
 
     /**
      * Set collection to pager
+     *
+     * Override strictly to apply custom entity parameters (limit/order)
+     * without triggering native Product logic.
      *
      * @param Collection $collection
      * @return $this
      */
     public function setCollection($collection)
     {
-        $this->collection = $collection;
+        $this->_collection = $collection;
 
-        $this->collection->setCurPage($this->getCurrentPage());
+        $this->_collection->setCurPage($this->getCurrentPage());
 
-        // we need to set pagination only if passed value integer and more that 0
+        // Apply pagination
         $limit = (int)$this->getLimit();
         if ($limit) {
-            $this->collection->setPageSize($limit);
+            $this->_collection->setPageSize($limit);
         }
 
+        // Apply sorting
         if ($this->getCurrentOrder()) {
-            $this->collection->setOrder($this->getCurrentOrder(), $this->getCurrentDirection());
+            $this->_collection->setOrder($this->getCurrentOrder(), $this->getCurrentDirection());
         }
-        return $this;
-    }
 
-    /**
-     * Return products collection instance
-     *
-     * @return Collection|null
-     */
-    public function getCollection(): ?Collection
-    {
-        return $this->collection;
+        return $this;
     }
 
     /**
@@ -141,11 +110,11 @@ class Toolbar extends Template
      */
     public function getCurrentPage()
     {
-        return $this->toolbarModel->getCurrentPage();
+        return $this->customToolbarModel->getCurrentPage();
     }
 
     /**
-     * Get grid products sort order field
+     * Get sorting order field
      *
      * @return string
      */
@@ -157,14 +126,14 @@ class Toolbar extends Template
         }
 
         $orders = $this->getAvailableOrders();
-        $defaultOrder = $this->getOrderField();
+        $defaultOrder = $this->setListHelper->getDefaultSortField();
 
         if (!isset($orders[$defaultOrder])) {
             $keys = array_keys($orders);
-            $defaultOrder = $keys[0];
+            $defaultOrder = $keys[0] ?? null;
         }
 
-        $order = $this->toolbarModel->getOrder();
+        $order = $this->customToolbarModel->getOrder();
         if (!$order || !isset($orders[$order])) {
             $order = $defaultOrder;
         }
@@ -186,11 +155,11 @@ class Toolbar extends Template
         }
 
         $directions = ['asc', 'desc'];
-        $dir = is_string($this->toolbarModel->getDirection()) ?
-            strtolower($this->toolbarModel->getDirection()) : '';
+        $dir = is_string($this->customToolbarModel->getDirection()) ?
+            strtolower($this->customToolbarModel->getDirection()) : '';
 
         if (!$dir || !in_array($dir, $directions)) {
-            $dir = $this->direction;
+            $dir = SetList::DEFAULT_SORT_DIRECTION;
         }
 
         $this->setData('_current_grid_direction', $dir);
@@ -198,122 +167,45 @@ class Toolbar extends Template
     }
 
     /**
-     * Set default Order field
+     * Get specified entities limit display per page
      *
-     * @param string $field
-     * @return $this
+     * @return string
      */
-    public function setDefaultOrder($field)
+    public function getLimit()
     {
-        $this->loadAvailableOrders();
-        if (isset($this->availableOrder[$field])) {
-            $this->orderField = $field;
+        $limit = $this->_getData('_current_limit');
+        if ($limit) {
+            return $limit;
         }
-        return $this;
+
+        $limits = $this->getAvailableLimit();
+        $defaultLimit = $this->setListHelper->getDefaultLimitPerPageValue($this->getCurrentMode());
+
+        if (!$defaultLimit || !isset($limits[$defaultLimit])) {
+            $keys = array_keys($limits);
+            $defaultLimit = $keys[0] ?? 20;
+        }
+
+        $limit = $this->customToolbarModel->getLimit();
+        if (!$limit || !isset($limits[$limit])) {
+            $limit = $defaultLimit;
+        }
+
+        $this->setData('_current_limit', (string)$limit);
+        return (string)$limit;
     }
 
     /**
-     * Set default sort direction
-     *
-     * @param string $dir
-     * @return $this
-     */
-    public function setDefaultDirection($dir)
-    {
-        if ($dir && in_array(strtolower($dir), ['asc', 'desc'])) {
-            $this->direction = strtolower($dir);
-        }
-        return $this;
-    }
-
-    /**
-     * Retrieve available Order fields list
+     * Retrieve available view modes
      *
      * @return array
      */
-    public function getAvailableOrders()
+    public function getModes()
     {
-        $this->loadAvailableOrders();
-        return $this->availableOrder;
-    }
-
-    /**
-     * Set Available order fields list
-     *
-     * @param array $orders
-     * @return $this
-     */
-    public function setAvailableOrders($orders)
-    {
-        $this->availableOrder = $orders;
-        return $this;
-    }
-
-    /**
-     * Add order to available orders
-     *
-     * @param string $order
-     * @param string $value
-     * @return $this
-     */
-    public function addOrderToAvailableOrders($order, $value)
-    {
-        $this->loadAvailableOrders();
-        $this->availableOrder[$order] = $value;
-        return $this;
-    }
-
-    /**
-     * Remove order from available orders if exists
-     *
-     * @param string $order
-     * @return $this
-     */
-    public function removeOrderFromAvailableOrders($order)
-    {
-        $this->loadAvailableOrders();
-        if (isset($this->availableOrder[$order])) {
-            unset($this->availableOrder[$order]);
+        if ($this->_availableMode === []) {
+            $this->_availableMode = $this->setListHelper->getAvailableViewMode();
         }
-        return $this;
-    }
-
-    /**
-     * Compare defined order field with current order field
-     *
-     * @param string $order
-     * @return bool
-     */
-    public function isOrderCurrent($order)
-    {
-        return $order === $this->getCurrentOrder();
-    }
-
-    /**
-     * Return current URL with rewrites and additional parameters
-     *
-     * @param array $params Query parameters
-     * @return string
-     */
-    public function getPagerUrl($params = [])
-    {
-        $urlParams = [];
-        $urlParams['_current'] = true;
-        $urlParams['_escape'] = false;
-        $urlParams['_use_rewrite'] = true;
-        $urlParams['_query'] = $params;
-        return $this->getUrl('*/*/*', $urlParams);
-    }
-
-    /**
-     * Get pager encoded url.
-     *
-     * @param array $params
-     * @return string
-     */
-    public function getPagerEncodedUrl($params = [])
-    {
-        return $this->urlEncoder->encode($this->getPagerUrl($params));
+        return $this->_availableMode;
     }
 
     /**
@@ -327,9 +219,11 @@ class Toolbar extends Template
         if ($mode) {
             return $mode;
         }
+
         $defaultMode = $this->setListHelper->getDefaultViewMode($this->getModes());
-        $mode = $this->toolbarModel->getMode();
-        if (!$mode || !isset($this->availableMode[$mode])) {
+        $mode = $this->customToolbarModel->getMode();
+
+        if (!$mode || !isset($this->_availableMode[$mode])) {
             $mode = $defaultMode;
         }
 
@@ -338,237 +232,13 @@ class Toolbar extends Template
     }
 
     /**
-     * Compare defined view mode with current active mode
-     *
-     * @param string $mode
-     * @return bool
-     */
-    public function isModeActive($mode)
-    {
-        return $this->getCurrentMode() == $mode;
-    }
-
-    /**
-     * Retrieve available view modes
-     *
-     * @return array
-     */
-    public function getModes()
-    {
-        if ($this->availableMode === []) {
-            $this->availableMode = $this->setListHelper->getAvailableViewMode();
-        }
-        return $this->availableMode;
-    }
-
-    /**
-     * Set available view modes list
-     *
-     * @param array $modes
-     * @return $this
-     */
-    public function setModes($modes)
-    {
-        $this->getModes();
-        if (!isset($this->availableMode)) {
-            $this->availableMode = $modes;
-        }
-        return $this;
-    }
-
-    /**
-     * Disable view switcher
-     *
-     * @return $this
-     */
-    public function disableViewSwitcher()
-    {
-        $this->enableViewSwitcher = false;
-        return $this;
-    }
-
-    /**
-     * Enable view switcher
-     *
-     * @return $this
-     */
-    public function enableViewSwitcher()
-    {
-        $this->enableViewSwitcher = true;
-        return $this;
-    }
-
-    /**
-     * Is a enabled view switcher
-     *
-     * @return bool
-     */
-    public function isEnabledViewSwitcher()
-    {
-        return $this->enableViewSwitcher;
-    }
-
-    /**
-     * Disable Expanded
-     *
-     * @return $this
-     */
-    public function disableExpanded()
-    {
-        $this->isExpanded = false;
-        return $this;
-    }
-
-    /**
-     * Enable Expanded
-     *
-     * @return $this
-     */
-    public function enableExpanded()
-    {
-        $this->isExpanded = true;
-        return $this;
-    }
-
-    /**
-     * Check is Expanded
-     *
-     * @return bool
-     */
-    public function isExpanded()
-    {
-        return $this->isExpanded;
-    }
-
-    /**
-     * Retrieve default per page values
-     *
-     * @return string (comma separated)
-     */
-    public function getDefaultPerPageValue()
-    {
-        if ($this->getCurrentMode() == 'list' && ($default = $this->getDefaultListPerPage())) {
-            return $default;
-        } elseif ($this->getCurrentMode() == 'grid' && ($default = $this->getDefaultGridPerPage())) {
-            return $default;
-        }
-        return $this->setListHelper->getDefaultLimitPerPageValue($this->getCurrentMode());
-    }
-
-    /**
-     * Set pager limit
-     *
-     * @param array $limits
-     * @return $this
-     */
-    public function setAvailableLimit(array $limits)
-    {
-        $this->availableLimit = $limits;
-        return $this;
-    }
-
-    /**
-     * Retrieve pager limit
+     * Retrieve available limits for current view mode
      *
      * @return array
      */
     public function getAvailableLimit()
     {
-        if ($this->availableLimit) {
-            return $this->availableLimit;
-        }
         return $this->setListHelper->getAvailableLimit($this->getCurrentMode());
-    }
-
-    /**
-     * Get specified products limit display per page
-     *
-     * @return string
-     */
-    public function getLimit()
-    {
-        $limit = $this->_getData('_current_limit');
-        if ($limit) {
-            return $limit;
-        }
-
-        $limits = $this->getAvailableLimit();
-        $defaultLimit = $this->getDefaultPerPageValue();
-        if (!$defaultLimit || !isset($limits[$defaultLimit])) {
-            $keys = array_keys($limits);
-            $defaultLimit = $keys[0];
-        }
-
-        $limit = $this->toolbarModel->getLimit();
-        if (!$limit || !isset($limits[$limit])) {
-            $limit = $defaultLimit;
-        }
-
-        $this->setData('_current_limit', $limit);
-        return $limit;
-    }
-
-    /**
-     * Check if limit is current used in toolbar.
-     *
-     * @param int $limit
-     * @return bool
-     */
-    public function isLimitCurrent($limit)
-    {
-        return $limit == $this->getLimit();
-    }
-
-    /**
-     * Pager number of items from which products started on current page.
-     *
-     * @return int
-     */
-    public function getFirstNum()
-    {
-        $collection = $this->getCollection();
-        return $collection->getPageSize() * ($collection->getCurPage() - 1) + 1;
-    }
-
-    /**
-     * Pager number of items products finished on current page.
-     *
-     * @return int
-     */
-    public function getLastNum()
-    {
-        $collection = $this->getCollection();
-        return $collection->getPageSize() * ($collection->getCurPage() - 1) + $collection->count();
-    }
-
-    /**
-     * Total number of products in current category.
-     *
-     * @return int
-     */
-    public function getTotalNum()
-    {
-        return $this->getCollection()->getSize();
-    }
-
-    /**
-     * Check if current page is the first.
-     *
-     * @return bool
-     */
-    public function isFirstPage()
-    {
-        return $this->getCollection()->getCurPage() == 1;
-    }
-
-    /**
-     * Return last page number.
-     *
-     * @return int
-     */
-    public function getLastPageNum()
-    {
-        return $this->getCollection()->getLastPageNumber();
     }
 
     /**
@@ -581,32 +251,26 @@ class Toolbar extends Template
         $pagerBlock = $this->getChildBlock('set_list_toolbar_pager');
 
         if ($pagerBlock instanceof \Magento\Framework\DataObject) {
-            /** @var $pagerBlock \Magento\Theme\Block\Html\Pager */
+            /** @var \Magento\Theme\Block\Html\Pager $pagerBlock */
             $pagerBlock->setAvailableLimit($this->getAvailableLimit());
-
-            $pagerBlock->setUseContainer(
-                false
-            )->setShowPerPage(
-                false
-            )->setShowAmounts(
-                false
-            )->setFrameLength(
-                $this->_scopeConfig->getValue(
-                    'design/pagination/pagination_frame',
-                    \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+            $pagerBlock->setUseContainer(false)
+                ->setShowPerPage(false)
+                ->setShowAmounts(false)
+                ->setFrameLength(
+                    $this->_scopeConfig->getValue(
+                        'design/pagination/pagination_frame',
+                        \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+                    )
                 )
-            )->setJump(
-                $this->_scopeConfig->getValue(
-                    'design/pagination/pagination_frame_skip',
-                    \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+                ->setJump(
+                    $this->_scopeConfig->getValue(
+                        'design/pagination/pagination_frame_skip',
+                        \Magento\Store\Model\ScopeInterface::SCOPE_STORE
+                    )
                 )
-            )->setLimitVarName(
-                ToolbarModel::LIMIT_PARAM_NAME
-            )->setLimit(
-                $this->getLimit()
-            )->setCollection(
-                $this->getCollection()
-            );
+                ->setLimitVarName(ToolbarModel::LIMIT_PARAM_NAME)
+                ->setLimit($this->getLimit())
+                ->setCollection($this->getCollection());
 
             return $pagerBlock->toHtml();
         }
@@ -617,7 +281,7 @@ class Toolbar extends Template
     /**
      * Retrieve widget options in json format
      *
-     * @param array $customOptions Optional parameter for passing custom selectors from template
+     * @param array $customOptions
      * @return string
      */
     public function getWidgetOptionsJson(array $customOptions = [])
@@ -629,39 +293,13 @@ class Toolbar extends Template
             'order' => ToolbarModel::ORDER_PARAM_NAME,
             'limit' => ToolbarModel::LIMIT_PARAM_NAME,
             'modeDefault' => $defaultMode,
-            'directionDefault' => $this->direction,
-            'orderDefault' => $this->getOrderField(),
+            'directionDefault' => SetList::DEFAULT_SORT_DIRECTION,
+            'orderDefault' => $this->setListHelper->getDefaultSortField(),
             'limitDefault' => $this->setListHelper->getDefaultLimitPerPageValue($defaultMode),
             'url' => $this->getPagerUrl(),
             'formKey' => $this->formKey->getFormKey()
         ];
         $options = array_replace_recursive($options, $customOptions);
         return json_encode(['entityListToolbarForm' => $options]);
-    }
-
-    /**
-     * Get order field
-     *
-     * @return null|string
-     */
-    protected function getOrderField()
-    {
-        if ($this->orderField === null) {
-            $this->orderField = $this->setListHelper->getDefaultSortField();
-        }
-        return $this->orderField;
-    }
-
-    /**
-     * Load Available Orders
-     *
-     * @return $this
-     */
-    private function loadAvailableOrders()
-    {
-        if ($this->availableOrder === null) {
-            $this->availableOrder = SortBy::toArray();
-        }
-        return $this;
     }
 }
