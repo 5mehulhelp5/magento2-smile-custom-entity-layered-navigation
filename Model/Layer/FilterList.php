@@ -19,6 +19,7 @@ namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Magento\Framework\ObjectManagerInterface;
 use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Smile\CustomEntity\Model\CustomEntity\Attribute;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
 
 /**
