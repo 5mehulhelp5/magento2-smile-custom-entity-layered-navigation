@@ -16,15 +16,18 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter;
 
-use Magento\Framework\Exception\LocalizedException;
-use Magento\Framework\Serialize\SerializerInterface;
-use Magento\Store\Model\StoreManagerInterface;
-use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
-use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\ItemFactory;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer\Filter\Attribute as AttributeResource;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer\Filter\AttributeFactory;
+use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
+use Magento\Framework\App\RequestInterface;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Filter\StripTags;
+use Magento\Framework\Serialize\SerializerInterface;
+use Magento\Framework\Stdlib\StringUtils;
+use Magento\Store\Model\StoreManagerInterface;
+use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 
 /**
  * Layer attribute filter
@@ -46,8 +49,8 @@ class Attribute extends AbstractFilter
      * @param Layer $layer
      * @param DataBuilder $itemDataBuilder
      * @param AttributeFactory $filterAttributeFactory
-     * @param \Magento\Framework\Stdlib\StringUtils $string
-     * @param \Magento\Framework\Filter\StripTags $tagFilter
+     * @param StringUtils $string
+     * @param StripTags $tagFilter
      * @param array $data
      */
     public function __construct(
@@ -56,15 +59,23 @@ class Attribute extends AbstractFilter
         Layer $layer,
         DataBuilder $itemDataBuilder,
         AttributeFactory $filterAttributeFactory,
-        \Magento\Framework\Stdlib\StringUtils $string,
-        \Magento\Framework\Filter\StripTags $tagFilter,
+        protected readonly StringUtils $string,
+        protected readonly StripTags $tagFilter,
         array $data = []
     ) {
         $this->_resource = $filterAttributeFactory->create();
         $this->string = $string;
-        $this->_requestVar = 'attribute';
         $this->tagFilter = $tagFilter;
-        parent::__construct($filterItemFactory, $storeManager, $layer, $itemDataBuilder, $data);
+        
+        $this->_requestVar = 'attribute';
+        
+        parent::__construct(
+            $filterItemFactory, 
+            $storeManager, 
+            $layer, 
+            $itemDataBuilder, 
+            $data
+        );
     }
 
     /**
@@ -80,10 +91,10 @@ class Attribute extends AbstractFilter
     /**
      * Apply attribute option filter to product collection
      *
-     * @param   \Magento\Framework\App\RequestInterface $request
+     * @param   RequestInterface $request
      * @return  $this
      */
-    public function apply(\Magento\Framework\App\RequestInterface $request)
+    public function apply(RequestInterface $request)
     {
         $filter = $request->getParam($this->_requestVar);
         
