@@ -153,7 +153,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      * @return $this
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
-    public function apply(\RequestInterface $request)
+    public function apply(RequestInterface $request)
     {
         return $this;
     }
