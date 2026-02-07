@@ -25,6 +25,8 @@ use Magento\Catalog\Model\Session as CatalogSession;
 use Magento\Framework\Data\Form\FormKey;
 use Magento\Framework\Url\EncoderInterface;
 use Magento\Framework\View\Element\Template\Context;
+use Magento\Catalog\Helper\Product\ProductList as ProductListHelper;
+use Magento\Framework\Data\Helper\PostHelper;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 
 /**
@@ -46,6 +48,8 @@ class Toolbar extends NativeToolbar
      * @param CatalogConfig $catalogConfig
      * @param NativeToolbarModel $toolbarModel
      * @param EncoderInterface $urlEncoder
+     * @param ProductListHelper $productListHelper
+     * @param PostHelper $postDataHelper
      * @param ToolbarModel $customToolbarModel
      * @param SetList $setListHelper
      * @param FormKey $formKey
@@ -57,6 +61,8 @@ class Toolbar extends NativeToolbar
         CatalogConfig $catalogConfig,
         NativeToolbarModel $toolbarModel,
         EncoderInterface $urlEncoder,
+        ProductListHelper $productListHelper,
+        PostHelper $postDataHelper,
         protected ToolbarModel $customToolbarModel,
         protected SetList $setListHelper,
         protected FormKey $formKey,
@@ -69,7 +75,8 @@ class Toolbar extends NativeToolbar
             $catalogConfig,
             $toolbarModel,
             $urlEncoder,
-            [], // Custom product list order not needed here
+            $productListHelper,
+            $postDataHelper,
             $data
         );
     }
