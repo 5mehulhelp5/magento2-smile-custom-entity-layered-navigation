@@ -16,11 +16,11 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
 use Magento\Framework\ObjectManagerInterface;
 use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 use Smile\CustomEntity\Model\CustomEntity\Attribute;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
 
 /**
  * Filter List Model for Custom Entity Layered Navigation.
@@ -30,6 +30,8 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter
  */
 class FilterList implements ResetAfterRequestInterface
 {
+    public const string ATTRIBUTE_FILTER  = 'attribute';
+
     /**
      * @var AbstractFilter[]
      */
@@ -101,8 +103,8 @@ class FilterList implements ResetAfterRequestInterface
         $frontendInput = $attribute->getFrontendInput();
 
         // Use the specific class mapped to the input type (e.g. 'boolean', 'multiselect')
-        // Fallback to 'select' mapping if the specific input type is not defined
-        return $this->filterTypes[$frontendInput] ?? $this->filterTypes['select'];
+        // Fallback to 'attribute' mapping if the specific input type is not defined
+        return $this->filterTypes[$frontendInput] ?? $this->filterTypes[self::ATTRIBUTE_FILTER];
     }
 
     /**

@@ -16,13 +16,13 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block;
 
-use Magento\Framework\View\Element\Template;
-use Magento\Framework\View\Element\Template\Context;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\AvailabilityFlagInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterList;
 use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
+use Magento\Framework\View\Element\Template;
+use Magento\Framework\View\Element\Template\Context;
 
 /**
  * Layered Navigation View Block for Custom Entities.
@@ -33,12 +33,12 @@ class Navigation extends Template
     /**
      * Entity listing toolbar block name
      */
-    private const ENTITY_LISTING_TOOLBAR_BLOCK = 'set_list_toolbar';
+    protected const string ENTITY_LISTING_TOOLBAR_BLOCK = 'set_list_toolbar';
 
     /**
      * @var Layer
      */
-    private Layer $entityLayer;
+    protected Layer $entityLayer;
 
     /**
      * @param Context $context
@@ -138,7 +138,7 @@ class Navigation extends Template
     private function configureToolbarBlock(): void
     {
         $toolbarBlock = $this->getLayout()->getBlock(self::ENTITY_LISTING_TOOLBAR_BLOCK);
-        
+
         if ($toolbarBlock instanceof Toolbar) {
             $collection = $this->getLayer()->getEntityCollection();
             $toolbarBlock->setCollection($collection);

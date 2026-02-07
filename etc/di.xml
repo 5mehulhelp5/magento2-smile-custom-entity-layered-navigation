@@ -43,8 +43,6 @@
         <arguments>
             <argument name="filters" xsi:type="array">
                 <item name="attribute" xsi:type="string">Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\Attribute</item>
-                <item name="select" xsi:type="string">Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\Attribute</item>
-                <item name="multiselect" xsi:type="string">Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\Attribute</item>
                 <item name="boolean" xsi:type="string">Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\Boolean</item>
             </argument>
         </arguments>

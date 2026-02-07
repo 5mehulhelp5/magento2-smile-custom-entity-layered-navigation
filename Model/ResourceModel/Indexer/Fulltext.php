@@ -29,48 +29,36 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeLi
 
 /**
  * Resource Model for Custom Entity Layered Navigation Indexer.
- *
- * Handles the indexing of filterable attributes for custom entities to enable
- * layered navigation functionality, respecting store-view scoping.
- *
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+ * * Handles the flat indexing of EAV attributes to enable high-performance
+ * layered navigation SQL queries.
  */
 class Fulltext
 {
     /**
-     * @var string Prefix for custom entity tables
+     * @var string Table prefix for custom entity EAV tables.
      */
     private const TABLE_PREFIX = 'smile_custom_entity_';
 
     /**
-     * @var string Index table name
-     */
-    private string $mainTable = 'amadeco_custom_entity_index_eav_idx';
-
-    /**
-     * @var array<string, string> Map backend_type to EAV table suffix
-     */
-    private const BACKEND_TABLE_MAP = [
-        'int' => 'int',
-        'varchar' => 'varchar',
-        'text' => 'text',
-        'decimal' => 'decimal',
-        'datetime' => 'datetime',
-    ];
-
-    /**
-     * @var int Batch size for processing entities
+     * @var int Batch size for chunked database insertions.
      */
     private const BATCH_SIZE = 500;
 
     /**
-     * @var AdapterInterface
+     * @var array<string, string> Map backend types to specific table suffixes.
      */
+    private const BACKEND_TABLE_MAP = [
+        'int'      => 'int',
+        'varchar'  => 'varchar',
+        'text'     => 'text',
+        'decimal'  => 'decimal',
+        'datetime' => 'datetime',
+    ];
+
+    private string $mainTable = 'amadeco_custom_entity_index_eav_idx';
     private AdapterInterface $connection;
 
     /**
-     * Constructor.
-     *
      * @param ResourceConnection $resourceConnection
      * @param StoreManagerInterface $storeManager
      * @param FilterableAttributeList $filterableAttributeList
@@ -89,10 +77,7 @@ class Fulltext
     }
 
     /**
-     * Regenerate the index for all entities and stores.
-     *
-     * This method will truncate the index table and rebuild it for all active
-     * custom entities and their filterable attributes across all stores.
+     * Completely rebuild the index for all stores and active entities.
      *
      * @return void
      * @throws LocalizedException
@@ -105,8 +90,7 @@ class Fulltext
             }
 
             $this->connection->truncateTable($this->mainTable);
-
-            $stores = $this->storeManager->getStores();
+            $stores = $this->storeManager->getStores(true);
             $attributes = $this->getIndexableAttributes();
 
             if (empty($attributes)) {
@@ -114,30 +98,22 @@ class Fulltext
             }
 
             $this->connection->beginTransaction();
-
             try {
                 foreach ($stores as $store) {
                     $this->indexStore((int)$store->getId(), $attributes);
                 }
-
                 $this->connection->commit();
             } catch (\Exception $e) {
                 $this->connection->rollBack();
-                throw new LocalizedException(
-                    __('Failed to reindex all entities: %1', $e->getMessage()),
-                    $e
-                );
+                throw new LocalizedException(__('Failed to reindex all entities: %1', $e->getMessage()), $e);
             }
         } catch (\Exception $e) {
-            throw new LocalizedException(
-                __('An error occurred during full reindexing: %1', $e->getMessage()),
-                $e
-            );
+            throw new LocalizedException(__('An error occurred during full reindexing: %1', $e->getMessage()), $e);
         }
     }
 
     /**
-     * Reindex specific entity rows.
+     * Reindex specific entity IDs (Partial Reindex).
      *
      * @param int[] $entityIds
      * @return void
@@ -151,8 +127,7 @@ class Fulltext
 
         try {
             $this->connection->delete($this->mainTable, ['entity_id IN (?)' => $entityIds]);
-
-            $stores = $this->storeManager->getStores();
+            $stores = $this->storeManager->getStores(true);
             $attributes = $this->getIndexableAttributes();
 
             if (empty($attributes)) {
@@ -160,43 +135,28 @@ class Fulltext
             }
 
             $this->connection->beginTransaction();
-
             try {
                 foreach ($stores as $store) {
                     $storeId = (int)$store->getId();
-                    // For specific rows, we can fetch all data at once since IDs are limited
                     $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
                     $this->insertIndexData($indexedData);
                 }
-
                 $this->connection->commit();
             } catch (\Exception $e) {
                 $this->connection->rollBack();
-                throw new LocalizedException(
-                    __('Failed to reindex specific entities: %1', $e->getMessage()),
-                    $e
-                );
+                throw new LocalizedException(__('Failed to reindex rows: %1', $e->getMessage()), $e);
             }
         } catch (\Exception $e) {
-            throw new LocalizedException(
-                __('An error occurred during partial reindexing: %1', $e->getMessage()),
-                $e
-            );
+            throw new LocalizedException(__('An error occurred during partial reindexing: %1', $e->getMessage()), $e);
         }
     }
 
     /**
-     * Index all entities for a specific store using keyset pagination.
-     *
-     * @param int $storeId
-     * @param CustomEntityAttributeInterface[] $attributes
-     * @return void
-     * @throws LocalizedException
+     * Process indexing for a specific store view using keyset pagination.
      */
     private function indexStore(int $storeId, array $attributes): void
     {
         $lastEntityId = 0;
-
         while (true) {
             $collection = $this->entityCollectionFactory->create();
             $collection->addAttributeToSelect('entity_id');
@@ -211,12 +171,9 @@ class Fulltext
 
             $entityIds = [];
             foreach ($collection as $entity) {
-                $entityIds[] = (int)$entity->getId();
-                $lastEntityId = (int)$entity->getId();
-            }
-
-            if (empty($entityIds)) {
-                break;
+                $id = (int)$entity->getId();
+                $entityIds[] = $id;
+                $lastEntityId = $id;
             }
 
             $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
@@ -225,17 +182,8 @@ class Fulltext
     }
 
     /**
-     * Fetch indexable data for given store, attributes, and entity IDs.
-     *
-     * Correctly handles Store View Scoping:
-     * - Fetches values for Store 0 (Default) and Current Store.
-     * - Prioritizes Current Store values over Default values via SQL ordering.
-     *
-     * @param int $storeId Store ID to index for
-     * @param CustomEntityAttributeInterface[] $attributes Attributes to index
-     * @param int[] $entityIds Entity IDs to index
-     * @return array<int, array<string, int|string>>
-     * @throws LocalizedException
+     * Fetch raw data from EAV tables with store-view scope fallback logic.
+     * * @return array<int, array<string, mixed>>
      */
     private function fetchIndexData(int $storeId, array $attributes, array $entityIds): array
     {
@@ -251,55 +199,37 @@ class Fulltext
                 continue;
             }
 
-            $attributeTableSuffix = self::BACKEND_TABLE_MAP[$backendType];
             $attributeTable = $this->resourceConnection->getTableName(
-                self::TABLE_PREFIX . $attributeTableSuffix
+                self::TABLE_PREFIX . self::BACKEND_TABLE_MAP[$backendType]
             );
 
             if (!$this->connection->isTableExists($attributeTable)) {
                 continue;
             }
 
-            // Select values for both global (0) and specific store
-            $select = $this->connection->select();
-            $select->from(['e' => $entityTable], ['entity_id'])
+            $select = $this->connection->select()
+                ->from(['e' => $entityTable], ['entity_id'])
                 ->joinInner(
                     ['ea' => $attributeTable],
                     "e.{$linkField} = ea.{$linkField}",
-                    [
-                        'value' => 'ea.value',
-                        'store_id' => 'ea.store_id'
-                    ]
+                    ['value' => 'ea.value', 'store_id' => 'ea.store_id']
                 )
                 ->where('ea.attribute_id = ?', $attributeId)
                 ->where('ea.store_id IN (?)', [0, $storeId])
-                ->where('e.entity_id IN (?)', $entityIds);
-
-            // ORDER BY store_id ASC guarantees Store 0 (Default) comes before Store ID (Specific).
-            // This order is critical for the overwrite logic in process*AttributeRows.
-            $select->order('ea.store_id ' . Select::SQL_ASC);
+                ->where('e.entity_id IN (?)', $entityIds)
+                ->order('ea.store_id ' . Select::SQL_ASC);
 
             $rows = $this->connection->fetchAll($select);
-
-            if (empty($rows)) {
-                continue;
+            if (!empty($rows)) {
+                $this->processAttributeRows($rows, $attribute, $attributeId, $storeId, $indexData);
             }
-
-            $this->processAttributeRows($rows, $attribute, $attributeId, $storeId, $indexData);
         }
 
         return $indexData;
     }
 
     /**
-     * Process attribute rows and add to index data.
-     *
-     * @param array<int, array<string, mixed>> $rows The query result rows
-     * @param CustomEntityAttributeInterface $attribute The attribute being processed
-     * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID being indexed
-     * @param array<int, array<string, mixed>> &$indexData Reference to the index data array to fill
-     * @return void
+     * Route attribute processing based on frontend input type.
      */
     private function processAttributeRows(
         array $rows,
@@ -309,157 +239,95 @@ class Fulltext
         array &$indexData
     ): void {
         if ($attribute->getFrontendInput() === 'multiselect') {
-            $this->processMultiselectAttributeRows($rows, $attributeId, $storeId, $indexData);
+            $this->processMultiselectRows($rows, $attributeId, $storeId, $indexData);
         } else {
-            $this->processRegularAttributeRows($rows, $attributeId, $storeId, $indexData);
+            $this->processRegularRows($rows, $attributeId, $storeId, $indexData);
         }
     }
 
     /**
-     * Process multiselect attribute rows with scope fallback.
-     *
-     * Optimization: Uses "Last Write Wins" based on Store ID ordering to determine the winning value string,
-     * reducing memory overhead of intermediate arrays.
-     *
-     * @param array<int, array<string, mixed>> $rows
-     * @param int $attributeId
-     * @param int $storeId
-     * @param array<int, array<string, mixed>> &$indexData
-     * @return void
+     * Process multiselect attributes (exploding comma-separated values).
      */
-    private function processMultiselectAttributeRows(
-        array $rows,
-        int $attributeId,
-        int $storeId,
-        array &$indexData
-    ): void {
+    private function processMultiselectRows(array $rows, int $attributeId, int $storeId, array &$indexData): void
+    {
         $entityRawValues = [];
-
-        // Step 1: Resolve "Winning" Value per Entity (Specific overrides Default)
-        // Relies on SQL 'ORDER BY store_id ASC' ensuring Default (0) comes before Specific ($storeId).
-        // If a specific row exists (even empty), it overrides the default row.
         foreach ($rows as $row) {
+            // Store specific (later in loop) overrides default (earlier in loop)
             $entityRawValues[$row['entity_id']] = (string)$row['value'];
         }
 
-        // Step 2: Explode and index
         foreach ($entityRawValues as $entityId => $rawValue) {
-            if ($rawValue === '') {
-                continue;
-            }
-            
-            // Explode once per entity instead of per row
-            $values = explode(',', $rawValue);
-            foreach (array_unique($values) as $val) {
+            if ($rawValue === '') continue;
+
+            $values = array_unique(explode(',', $rawValue));
+            foreach ($values as $val) {
                 $trimVal = trim($val);
                 if ($trimVal !== '') {
-                    $indexData[] = [
-                        'entity_id' => $entityId,
-                        'attribute_id' => $attributeId,
-                        'store_id' => $storeId,
-                        'value' => $trimVal
-                    ];
+                    $indexData[] = $this->prepareRow($entityId, $attributeId, $storeId, $trimVal);
                 }
             }
         }
     }
 
     /**
-     * Process regular (scalar) attribute rows with scope fallback.
-     *
-     * @param array<int, array<string, mixed>> $rows
-     * @param int $attributeId
-     * @param int $storeId
-     * @param array<int, array<string, mixed>> &$indexData
-     * @return void
+     * Process standard scalar attributes.
      */
-    private function processRegularAttributeRows(
-        array $rows,
-        int $attributeId,
-        int $storeId,
-        array &$indexData
-    ): void {
-        $processedEntities = [];
-
+    private function processRegularRows(array $rows, int $attributeId, int $storeId, array &$indexData): void
+    {
+        $processed = [];
         foreach ($rows as $row) {
-            // Due to SQL ordering (store_id ASC), the default value (store 0) comes first.
-            // If a specific value (store X) exists later in the loop, it overwrites the default.
-            $processedEntities[$row['entity_id']] = (string)$row['value'];
+            $processed[$row['entity_id']] = (string)$row['value'];
         }
 
-        foreach ($processedEntities as $entityId => $value) {
-            // Skip empty values from index
+        foreach ($processed as $entityId => $value) {
             if ($value !== '') {
-                $indexData[] = [
-                    'entity_id' => $entityId,
-                    'attribute_id' => $attributeId,
-                    'store_id' => $storeId,
-                    'value' => $value,
-                ];
+                $indexData[] = $this->prepareRow($entityId, $attributeId, $storeId, $value);
             }
         }
     }
 
     /**
-     * Get entity link field (usually entity_id or row_id).
-     *
-     * @return string
+     * Internal helper to format index row.
+     */
+    private function prepareRow(int|string $entityId, int $attributeId, int $storeId, string $value): array
+    {
+        return [
+            'entity_id'    => (int)$entityId,
+            'attribute_id' => $attributeId,
+            'store_id'     => $storeId,
+            'value'        => $value
+        ];
+    }
+
+    /**
+     * Insert collected batches into the index table.
+     */
+    private function insertIndexData(array $indexData): void
+    {
+        if (empty($indexData)) return;
+
+        foreach (array_chunk($indexData, self::BATCH_SIZE) as $batch) {
+            $this->connection->insertMultiple($this->mainTable, $batch);
+        }
+    }
+
+    /**
+     * Get entity link field (usually entity_id or row_id for Enterprise).
      */
     private function getEntityLinkField(): string
     {
         try {
             return $this->metadataPool->getMetadata(CustomEntityInterface::class)->getLinkField();
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             return 'entity_id';
         }
     }
 
     /**
-     * Get attributes that should be indexed.
-     *
-     * @return CustomEntityAttributeInterface[]
+     * Get attributes configured as indexable.
      */
     private function getIndexableAttributes(): array
     {
         return $this->filterableAttributeList->getAllIndexableAttributes();
-    }
-
-    /**
-     * Insert collected data into the index table.
-     *
-     * @param array<int, array<string, mixed>> $indexData
-     * @return void
-     */
-    private function insertIndexData(array $indexData): void
-    {
-        if (empty($indexData)) {
-            return;
-        }
-
-        $batches = array_chunk($indexData, self::BATCH_SIZE);
-
-        foreach ($batches as $batch) {
-            $dataToInsert = [];
-
-            foreach ($batch as $row) {
-                if (isset($row['entity_id'], $row['attribute_id'], $row['store_id'], $row['value'])) {
-                    // Final check to ensure we don't insert empty strings
-                    if ($row['value'] === null || $row['value'] === '') {
-                        continue;
-                    }
-
-                    $dataToInsert[] = [
-                        'entity_id' => (int)$row['entity_id'],
-                        'attribute_id' => (int)$row['attribute_id'],
-                        'store_id' => (int)$row['store_id'],
-                        'value' => $row['value']
-                    ];
-                }
-            }
-
-            if (!empty($dataToInsert)) {
-                $this->connection->insertMultiple($this->mainTable, $dataToInsert);
-            }
-        }
     }
 }

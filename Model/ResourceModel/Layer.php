@@ -17,107 +17,38 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
 use Magento\Framework\App\ResourceConnection;
-use Magento\Framework\DB\Select;
-use Magento\Framework\Exception\LocalizedException;
-use Psr\Log\LoggerInterface;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
 
 /**
  * Layer Resource Model.
- * Provides methods to interact with the entity index based on layer state.
+ * * Provides database connection and table name utilities for the Layered Navigation.
  */
 class Layer
 {
-    private const INDEX_TABLE_ALIAS = 'idx';
-    private const AGGREGATION_FIELD = 'value'; // Column storing option IDs or boolean values
-
     /**
      * @param ResourceConnection $resourceConnection
-     * @param LoggerInterface $logger
-     * @param State $state
      */
     public function __construct(
-        private readonly ResourceConnection $resourceConnection,
-        private readonly LoggerInterface $logger,
-        private readonly State $state
+        private readonly ResourceConnection $resourceConnection
     ) {}
 
     /**
-     * Get a SELECT object for entity IDs matching the currently applied filters,
-     * optionally excluding one specific filter (used for calculating facet counts).
+     * Get the database connection.
      *
-     * @param int $storeId
-     * @param int $attributeSetId
-     * @param int|null $excludeAttributeId Attribute ID to exclude from filtering (for facet counts).
-     * @return Select|null
-     * @throws LocalizedException
+     * @return \Magento\Framework\DB\Adapter\AdapterInterface
      */
-    public function getBaseSelectForFacets(int $storeId, int $attributeSetId, ?int $excludeAttributeId = null): ?Select
+    public function getConnection()
     {
-        $connection = $this->resourceConnection->getConnection();
-        $indexTable = $this->resourceConnection->getTableName('amadeco_custom_entity_index_eav_idx');
-        $entityTable = $this->resourceConnection->getTableName('smile_custom_entity');
+        return $this->resourceConnection->getConnection();
+    }
 
-        if (!$connection->isTableExists($indexTable)) {
-            return null;
-        }
-
-        $appliedFilters = $this->state->getFiltersData();
-
-        if ($excludeAttributeId !== null && isset($appliedFilters[$excludeAttributeId])) {
-            unset($appliedFilters[$excludeAttributeId]);
-        }
-
-        $select = $connection->select();
-        $select->from(['e' => $entityTable], ['entity_id'])
-            ->where('e.attribute_set_id = ?', $attributeSetId);
-
-        // STABLE LOGIC: Use SQL Subselect for attribute ID and Loose Store Check
-        $select->joinLeft(
-            ['ea' => $this->resourceConnection->getTableName('smile_custom_entity_int')],
-            "e.entity_id = ea.entity_id AND ea.attribute_id = (
-                SELECT attribute_id FROM eav_attribute
-                WHERE attribute_code = 'is_active' AND entity_type_id = (
-                    SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = 'smile_custom_entity'
-                )
-            ) AND ea.store_id IN (0, {$storeId})",
-            []
-        )
-        ->where('ea.value = 1');
-
-        if (empty($appliedFilters)) {
-            return $select;
-        }
-
-        $aliasCounter = 0;
-        foreach ($appliedFilters as $attributeId => $value) {
-            $alias = 'filter_' . $aliasCounter++;
-
-            $conditions = [
-                "{$alias}.entity_id = e.entity_id",
-                $connection->quoteInto("{$alias}.attribute_id = ?", $attributeId),
-                $connection->quoteInto("{$alias}.store_id = ?", $storeId)
-            ];
-
-            if (is_array($value)) {
-                $conditions[] = $connection->quoteInto(
-                    "{$alias}." . self::AGGREGATION_FIELD . ' IN (?)', 
-                    $value
-                );
-            } else {
-                $conditions[] = $connection->quoteInto(
-                    "{$alias}." . self::AGGREGATION_FIELD . ' = ?', 
-                    $value
-                );
-            }
-
-            $select->joinInner(
-                [$alias => $indexTable],
-                implode(' AND ', $conditions),
-                []
-            );
-        }
-
-        return $select;
+    /**
+     * Get table name.
+     *
+     * @param string $tableName
+     * @return string
+     */
+    public function getTableName(string $tableName): string
+    {
+        return $this->resourceConnection->getTableName($tableName);
     }
 }

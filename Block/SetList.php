@@ -16,16 +16,16 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block;
 
-use Magento\Framework\DataObject\IdentityInterface;
-use Magento\Framework\View\Element\Template;
-use Magento\Framework\View\Element\Template\Context;
-use Magento\Eav\Api\Data\AttributeSetInterface;
-use Smile\CustomEntity\Model\CustomEntity;
-use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Config\Source\SortBy;
+use Magento\Eav\Api\Data\AttributeSetInterface;
+use Magento\Framework\DataObject\IdentityInterface;
+use Magento\Framework\View\Element\Template;
+use Magento\Framework\View\Element\Template\Context;
+use Smile\CustomEntity\Model\CustomEntity;
+use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 
 /**
  * Custom Entity Set List Block
@@ -182,8 +182,8 @@ class SetList extends Template implements IdentityInterface
         $block = $this->getToolbarFromLayout();
 
         if (!$block) {
-            $blockName = $this->getNameInLayout() 
-                ? $this->getNameInLayout() . '_toolbar' 
+            $blockName = $this->getNameInLayout()
+                ? $this->getNameInLayout() . '_toolbar'
                 : 'smile_custom_entity_toolbar';
             $block = $this->getLayout()->createBlock(
                 $this->defaultToolbarBlock,

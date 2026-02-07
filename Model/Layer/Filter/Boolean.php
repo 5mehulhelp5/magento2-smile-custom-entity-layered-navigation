@@ -55,19 +55,19 @@ class Boolean extends AbstractFilter
         Layer $layer,
         DataBuilder $itemDataBuilder,
         AttributeFactory $filterAttributeFactory,
-        protected readonly StringUtils $string,
+        protected readonly StringUtils $stringUtil,
         protected readonly StripTags $tagFilter,
         array $data = []
     ) {
         $this->_resource = $filterAttributeFactory->create();
-        
+
         $this->_requestVar = 'attribute';
-        
+
         parent::__construct(
-            $filterItemFactory, 
-            $storeManager, 
-            $layer, 
-            $itemDataBuilder, 
+            $filterItemFactory,
+            $storeManager,
+            $layer,
+            $itemDataBuilder,
             $data
         );
     }
@@ -115,28 +115,30 @@ class Boolean extends AbstractFilter
 
         $options = $attribute->getFrontend()->getSelectOptions();
         $optionsCount = $this->_getResource()->getCount($this);
+
         foreach ($options as $option) {
-            if (is_array($option['value'])) {
+            // Skip invalid options (e.g., placeholder labels with array values)
+            if (is_array($option['value']) || !$this->stringUtil->strlen((string)$option['value'])) {
                 continue;
             }
-            
-            if ($this->string->strlen($option['value'])) {
-                // Check filter type
-                if ($this->getAttributeIsFilterable($attribute) == self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
-                    if (!empty($optionsCount[$option['value']])) {
-                        $this->itemDataBuilder->addItemData(
-                            $this->tagFilter->filter($option['label']),
-                            $option['value'],
-                            $optionsCount[$option['value']]
-                        );
-                    }
-                } else {
-                    $this->itemDataBuilder->addItemData(
-                        $this->tagFilter->filter($option['label']),
-                        $option['value'],
-                        isset($optionsCount[$option['value']]) ? $optionsCount[$option['value']] : 0
-                    );
+
+            // Check filter type
+            if ($this->getAttributeIsFilterable($attribute) === self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
+                if (empty($optionsCount[$option['value']])) {
+                    continue;
                 }
+
+                $this->itemDataBuilder->addItemData(
+                    $this->tagFilter->filter($option['label']),
+                    $option['value'],
+                    $optionsCount[$option['value']]
+                );
+            } else {
+                $this->itemDataBuilder->addItemData(
+                    $this->tagFilter->filter($option['label']),
+                    $option['value'],
+                    isset($optionsCount[$option['value']]) ? $optionsCount[$option['value']] : 0
+                );
             }
         }
 
