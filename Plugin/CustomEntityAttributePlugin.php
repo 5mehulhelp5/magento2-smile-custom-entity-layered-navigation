@@ -39,10 +39,10 @@ class CustomEntityAttributePlugin
     {
         // Strict switch to avoid overhead
         return match ($method) {
-            'getIsFilterable' => (int)($subject->getData(FilterableAttributeInterface::IS_FILTERABLE) ?: 0),
-            'getPosition' => (int)($subject->getData(FilterableAttributeInterface::POSITION) ?: 0),
-            'setIsFilterable' => $subject->setData(FilterableAttributeInterface::IS_FILTERABLE, (int)($args[0] ?? 0)),
+            'setIsFilterable' => $subject->setData(FilterableAttributeInterface::IS_FILTERABLE, (int)($args[0] ?? FilterableAttributeInterface::NOT_FILTERABLE)),
+            'getIsFilterable' => (int)($subject->getData(FilterableAttributeInterface::IS_FILTERABLE) ?: FilterableAttributeInterface::NOT_FILTERABLE),
             'setPosition' => $subject->setData(FilterableAttributeInterface::POSITION, (int)($args[0] ?? 0)),
+            'getPosition' => (int)($subject->getData(FilterableAttributeInterface::POSITION) ?: 0),
             default => $proceed($method, $args),
         };
     }
