@@ -64,8 +64,6 @@ class Attribute extends AbstractFilter
         array $data = []
     ) {
         $this->_resource = $filterAttributeFactory->create();
-        $this->string = $string;
-        $this->tagFilter = $tagFilter;
         
         $this->_requestVar = 'attribute';
         
