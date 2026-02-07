@@ -1,4 +1,4 @@
-# Amadeco SmileCustomEntityLayeredNavigation Module for Magento 2
+# SmileCustomEntityLayeredNavigation for Magento 2
 
 [![Latest Stable Version](https://img.shields.io/github/v/release/iparmentier/magento2-smile-custom-entity-layered-navigation)](https://github.com/iparmentier/magento2-smile-custom-entity-layered-navigation/releases)
 [![Magento 2](https://img.shields.io/badge/Magento-2.4.x-brightgreen.svg)](https://magento.com)
