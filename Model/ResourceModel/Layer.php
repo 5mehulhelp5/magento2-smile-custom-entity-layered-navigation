@@ -22,6 +22,7 @@ use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
 use Psr\Log\LoggerInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
+use Smile\ScopedEav\Api\Data\EntityInterface;
 
 /**
  * Layer Resource Model.
@@ -35,12 +36,7 @@ class Layer
     private const ENTITY_TYPE_CODE = 'smile_custom_entity';
 
     /**
-     * Attribute code for active status
-     */
-    private const ATTRIBUTE_CODE_IS_ACTIVE = 'is_active';
-
-    /**
-     * Column storing option IDs or boolean values in the index tables
+     * Column storing option IDs or boolean values in the index/int tables
      */
     private const AGGREGATION_FIELD = 'value';
 
@@ -78,8 +74,8 @@ class Layer
             return null;
         }
 
-        // Retrieve is_active attribute configuration
-        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, self::ATTRIBUTE_CODE_IS_ACTIVE);
+        // Optimization: Get ID via PHP instead of SQL Subselect
+        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, EntityInterface::IS_ACTIVE);
         $activeAttributeId = (int) $activeAttribute->getAttributeId();
 
         $appliedFilters = $this->state->getFiltersData();
@@ -92,43 +88,18 @@ class Layer
         $select->from(['e' => $entityTable], ['entity_id'])
             ->where('e.attribute_set_id = ?', $attributeSetId);
 
-        // Filter by is_active = 1
-        // Implement robust EAV fallback (Store Value > Default Value)
-        // We do not rely on 'is_global' config to ensure data visibility even if data is scoped inconsistently.
-        
-        // Join Default Values (Store 0)
+        // Restored Logic: Allow is_active=1 in either Default (0) or Current Store.
+        // This effectively matches the stable branch logic which was robust against data inconsistency.
         $select->joinLeft(
-            ['active_d' => $intTable],
+            ['active_idx' => $intTable],
             $connection->quoteInto(
-                "e.entity_id = active_d.entity_id AND active_d.attribute_id = ? AND active_d.store_id = 0",
-                $activeAttributeId
+                "e.entity_id = active_idx.entity_id AND active_idx.attribute_id = ? AND active_idx.store_id IN (0, ?)",
+                $activeAttributeId,
+                $storeId
             ),
             []
-        );
-
-        if ($storeId > 0) {
-            // Join Store Values
-            $select->joinLeft(
-                ['active_s' => $intTable],
-                $connection->quoteInto(
-                    "e.entity_id = active_s.entity_id AND active_s.attribute_id = ? AND active_s.store_id = ?",
-                    $activeAttributeId,
-                    $storeId
-                ),
-                []
-            );
-
-            // Use Store value if it exists, otherwise Default value
-            $checkActiveSql = $connection->getCheckSql(
-                'active_s.value_id IS NOT NULL',
-                'active_s.value',
-                'active_d.value'
-            );
-            $select->where($checkActiveSql . ' = 1');
-        } else {
-            // Only Default Store available
-            $select->where('active_d.value = 1');
-        }
+        )
+        ->where('active_idx.value = 1');
 
         if (empty($appliedFilters)) {
             return $select;
@@ -138,6 +109,7 @@ class Layer
         foreach ($appliedFilters as $attributeId => $value) {
             $alias = 'filter_' . $aliasCounter++;
             
+            // Standardize Join Conditions for filters
             $conditions = [
                 "{$alias}.entity_id = e.entity_id",
                 $connection->quoteInto("{$alias}.attribute_id = ?", $attributeId),
