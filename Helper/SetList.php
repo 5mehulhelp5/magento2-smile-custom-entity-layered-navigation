@@ -16,9 +16,7 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Helper;
 
-use Magento\Catalog\Model\Config;
 use Magento\Framework\App\Config\ScopeConfigInterface;
-use Magento\Framework\App\ObjectManager;
 use Magento\Framework\Registry;
 use Magento\Store\Model\ScopeInterface;
 
@@ -49,40 +47,27 @@ class SetList
     public const VIEW_MODE_GRID = 'grid';
 
     /**
-     * @var ScopeConfigInterface
-     */
-    protected $scopeConfig;
-
-    /**
-     * @var Registry
-     */
-    private $coreRegistry;
-
-    /**
      * Default limits per page
      *
      * @var array
      */
-    protected $_defaultAvailableLimit = [20 => 20, 36 => 36, 52 => 52];
+    protected array $defaultAvailableLimit = [20 => 20, 36 => 36, 52 => 52];
 
     /**
      * @param ScopeConfigInterface $scopeConfig
      * @param Registry $coreRegistry
      */
     public function __construct(
-        ScopeConfigInterface $scopeConfig,
-        ?Registry $coreRegistry = null
-    ) {
-        $this->scopeConfig = $scopeConfig;
-        $this->coreRegistry = $coreRegistry ?? ObjectManager::getInstance()->get(Registry::class);
-    }
+        protected ScopeConfigInterface $scopeConfig,
+        protected Registry $coreRegistry
+    ) {}
 
     /**
      * Returns available mode for view
      *
      * @return array|null
      */
-    public function getAvailableViewMode()
+    public function getAvailableViewMode(): ?array
     {
         $value = $this->scopeConfig->getValue(self::XML_PATH_CUSTOM_ENTITY_LIST_MODE, ScopeInterface::SCOPE_STORE);
 
@@ -109,13 +94,13 @@ class SetList
      * @param array $options
      * @return string
      */
-    public function getDefaultViewMode($options = [])
+    public function getDefaultViewMode(array $options = []): string
     {
         if (empty($options)) {
             $options = $this->getAvailableViewMode();
         }
 
-        return current(array_keys($options));
+        return (string)current(array_keys($options));
     }
 
     /**
@@ -123,7 +108,7 @@ class SetList
      *
      * @return null|string
      */
-    public function getDefaultSortField()
+    public function getDefaultSortField(): ?string
     {
         return $this->scopeConfig->getValue(self::XML_PATH_CUSTOM_ENTITY_SORT_FIELD, ScopeInterface::SCOPE_STORE);
     }
@@ -139,7 +124,7 @@ class SetList
         $availableViewModes = $this->getAvailableViewMode();
 
         if (!isset($availableViewModes[$viewMode])) {
-            return $this->_defaultAvailableLimit;
+            return $this->defaultAvailableLimit;
         }
 
         $perPageConfigPath = 'custom_entity/storefront/' . $viewMode . '_per_page_values';
