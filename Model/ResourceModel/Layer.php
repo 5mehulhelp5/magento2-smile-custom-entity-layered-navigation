@@ -16,12 +16,12 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
 use Magento\Eav\Model\Config as EavConfig;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
 use Psr\Log\LoggerInterface;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
 use Smile\ScopedEav\Api\Data\EntityInterface;
 
 /**
@@ -47,10 +47,10 @@ class Layer
      * @param EavConfig $eavConfig
      */
     public function __construct(
-        private readonly ResourceConnection $resourceConnection,
-        private readonly LoggerInterface $logger,
-        private readonly State $state,
-        private readonly EavConfig $eavConfig
+        protected readonly ResourceConnection $resourceConnection,
+        protected readonly LoggerInterface $logger,
+        protected readonly State $state,
+        protected readonly EavConfig $eavConfig
     ) {}
 
     /**
