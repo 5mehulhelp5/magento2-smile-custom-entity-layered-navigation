@@ -37,7 +37,6 @@ class CustomEntityAttributePlugin
      */
     public function aroundCall(Attribute $subject, callable $proceed, $method, $args)
     {
-        // Strict switch to avoid overhead
         return match ($method) {
             'setIsFilterable' => $subject->setData(FilterableAttributeInterface::IS_FILTERABLE, (int)($args[0] ?? FilterableAttributeInterface::NOT_FILTERABLE)),
             'getIsFilterable' => (int)($subject->getData(FilterableAttributeInterface::IS_FILTERABLE) ?: FilterableAttributeInterface::NOT_FILTERABLE),
