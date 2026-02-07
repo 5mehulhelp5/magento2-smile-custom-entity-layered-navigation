@@ -25,6 +25,7 @@ use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Config\Source\SortBy;
 
 /**
  * Custom Entity Set List Block
@@ -266,6 +267,16 @@ class SetList extends Template implements IdentityInterface
     {
         // (Existing implementation preserved)
         return $this;
+    }
+
+    /**
+     * Retrieve available sort orders
+     *
+     * @return array
+     */
+    public function getAvailableOrders()
+    {
+        return SortBy::toArray();
     }
 
     /**
