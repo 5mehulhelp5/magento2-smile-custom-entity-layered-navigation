@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
 use Magento\Eav\Model\Config as EavConfig;
+use Magento\Eav\Model\Entity\Attribute\ScopedAttributeInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
@@ -33,6 +34,11 @@ class Layer
      * Entity type code for custom entities
      */
     private const ENTITY_TYPE_CODE = 'smile_custom_entity';
+
+    /**
+     * Attribute code for the 'is_active' status
+     */
+    private const IS_ACTIVE_ATTRIBUTE_CODE = 'is_active';
 
     /**
      * Column storing option IDs or boolean values in the index/int tables
@@ -67,12 +73,18 @@ class Layer
         $connection = $this->resourceConnection->getConnection();
         $indexTable = $this->resourceConnection->getTableName('amadeco_custom_entity_index_eav_idx');
         $entityTable = $this->resourceConnection->getTableName('smile_custom_entity');
+        $intTable = $this->resourceConnection->getTableName('smile_custom_entity_int');
 
         if (!$connection->isTableExists($indexTable)) {
             return null;
         }
 
-        $appliedFilters = $this->state->getFiltersData(); // ['attribute_id' => value(s), ...]
+        // Retrieve is_active attribute configuration
+        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, self::IS_ACTIVE_ATTRIBUTE_CODE);
+        $activeAttributeId = (int) $activeAttribute->getAttributeId();
+        $isGlobal = $activeAttribute->getIsGlobal() == ScopedAttributeInterface::SCOPE_GLOBAL;
+
+        $appliedFilters = $this->state->getFiltersData();
 
         if ($excludeAttributeId !== null && isset($appliedFilters[$excludeAttributeId])) {
             unset($appliedFilters[$excludeAttributeId]);
@@ -80,8 +92,53 @@ class Layer
 
         $select = $connection->select();
         $select->from(['e' => $entityTable], ['entity_id'])
-            ->where('e.attribute_set_id = ?', $attributeSetId)
-            ->where('e.is_active = ?', 1);
+            ->where('e.attribute_set_id = ?', $attributeSetId);
+
+        // Filter by is_active = 1
+        // We join the integer backend table since is_active is an EAV attribute, not a static column.
+        if ($isGlobal) {
+            // Global scope: simpler join on store_id = 0
+            $select->joinInner(
+                ['active_idx' => $intTable],
+                $connection->quoteInto(
+                    "e.entity_id = active_idx.entity_id AND active_idx.attribute_id = ? AND active_idx.store_id = 0 AND active_idx.value = 1",
+                    $activeAttributeId
+                ),
+                []
+            );
+        } else {
+            // Scoped attribute: Join Default (0) and Current Store to handle fallback
+            $select->joinLeft(
+                ['active_d' => $intTable],
+                $connection->quoteInto(
+                    "e.entity_id = active_d.entity_id AND active_d.attribute_id = ? AND active_d.store_id = 0",
+                    $activeAttributeId
+                ),
+                []
+            );
+
+            if ($storeId > 0) {
+                $select->joinLeft(
+                    ['active_s' => $intTable],
+                    $connection->quoteInto(
+                        "e.entity_id = active_s.entity_id AND active_s.attribute_id = ? AND active_s.store_id = ?",
+                        $activeAttributeId,
+                        $storeId
+                    ),
+                    []
+                );
+
+                // Check Value: Use Store value if exists, otherwise Default value
+                $checkActiveSql = $connection->getCheckSql(
+                    'active_s.value_id IS NOT NULL',
+                    'active_s.value',
+                    'active_d.value'
+                );
+                $select->where($checkActiveSql . ' = 1');
+            } else {
+                $select->where('active_d.value = 1');
+            }
+        }
 
         if (empty($appliedFilters)) {
             return $select;
@@ -97,9 +154,7 @@ class Layer
                 $connection->quoteInto("{$alias}.store_id = ?", $storeId)
             ];
 
-            // Handle Multiselect (Array) vs Single Select (Scalar)
             if (is_array($value)) {
-                // Uses IN (?) which is optimized by the DB and handles array quoting automatically
                 $conditions[] = $connection->quoteInto(
                     "{$alias}." . self::AGGREGATION_FIELD . ' IN (?)', 
                     $value
