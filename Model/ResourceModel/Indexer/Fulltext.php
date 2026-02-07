@@ -18,9 +18,11 @@ namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Indexer
 
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
+use Magento\Framework\DB\Select;
 use Magento\Framework\EntityManager\MetadataPool;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Store\Model\StoreManagerInterface;
+use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
 use Smile\CustomEntity\Api\Data\CustomEntityInterface;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\CollectionFactory as EntityCollectionFactory;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeList;
@@ -29,7 +31,7 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeLi
  * Resource Model for Custom Entity Layered Navigation Indexer.
  *
  * Handles the indexing of filterable attributes for custom entities to enable
- * layered navigation functionality.
+ * layered navigation functionality, respecting store-view scoping.
  *
  * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
  */
@@ -39,14 +41,14 @@ class Fulltext
      * @var string Prefix for custom entity tables
      */
     private const TABLE_PREFIX = 'smile_custom_entity_';
-    
+
     /**
-     * @var string Index table name - IMPORTANT: Make sure this matches db_schema.xml exactly
+     * @var string Index table name
      */
     private string $mainTable = 'amadeco_custom_entity_index_eav_idx';
 
     /**
-     * @var array Map backend_type to EAV table suffix
+     * @var array<string, string> Map backend_type to EAV table suffix
      */
     private const BACKEND_TABLE_MAP = [
         'int' => 'int',
@@ -62,6 +64,13 @@ class Fulltext
     private const BATCH_SIZE = 500;
 
     /**
+     * @var AdapterInterface
+     */
+    private AdapterInterface $connection;
+
+    /**
+     * Constructor.
+     *
      * @param ResourceConnection $resourceConnection
      * @param StoreManagerInterface $storeManager
      * @param FilterableAttributeList $filterableAttributeList
@@ -128,45 +137,6 @@ class Fulltext
     }
 
     /**
-     * Index all entities for a specific store using keyset pagination to avoid memory issues.
-     *
-     * @param int $storeId
-     * @param array $attributes
-     * @return void
-     * @throws LocalizedException
-     */
-    private function indexStore(int $storeId, array $attributes): void
-    {
-        $lastEntityId = 0;
-
-        while (true) {
-            $collection = $this->entityCollectionFactory->create();
-            $collection->addAttributeToSelect('entity_id');
-            $collection->addAttributeToFilter('is_active', 1);
-            $collection->addAttributeToFilter('entity_id', ['gt' => $lastEntityId]);
-            $collection->setOrder('entity_id', 'ASC');
-            $collection->setPageSize(self::BATCH_SIZE);
-
-            if ($collection->count() === 0) {
-                break;
-            }
-
-            $entityIds = [];
-            foreach ($collection as $entity) {
-                $entityIds[] = (int)$entity->getId();
-                $lastEntityId = (int)$entity->getId();
-            }
-
-            if (empty($entityIds)) {
-                break;
-            }
-
-            $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
-            $this->insertIndexData($indexedData);
-        }
-    }
-
-    /**
      * Reindex specific entity rows.
      *
      * @param int[] $entityIds
@@ -194,6 +164,7 @@ class Fulltext
             try {
                 foreach ($stores as $store) {
                     $storeId = (int)$store->getId();
+                    // For specific rows, we can fetch all data at once since IDs are limited
                     $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
                     $this->insertIndexData($indexedData);
                 }
@@ -215,12 +186,55 @@ class Fulltext
     }
 
     /**
+     * Index all entities for a specific store using keyset pagination.
+     *
+     * @param int $storeId
+     * @param CustomEntityAttributeInterface[] $attributes
+     * @return void
+     * @throws LocalizedException
+     */
+    private function indexStore(int $storeId, array $attributes): void
+    {
+        $lastEntityId = 0;
+
+        while (true) {
+            $collection = $this->entityCollectionFactory->create();
+            $collection->addAttributeToSelect('entity_id');
+            $collection->addAttributeToFilter('is_active', 1);
+            $collection->addAttributeToFilter('entity_id', ['gt' => $lastEntityId]);
+            $collection->setOrder('entity_id', Select::SQL_ASC);
+            $collection->setPageSize(self::BATCH_SIZE);
+
+            if ($collection->count() === 0) {
+                break;
+            }
+
+            $entityIds = [];
+            foreach ($collection as $entity) {
+                $entityIds[] = (int)$entity->getId();
+                $lastEntityId = (int)$entity->getId();
+            }
+
+            if (empty($entityIds)) {
+                break;
+            }
+
+            $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
+            $this->insertIndexData($indexedData);
+        }
+    }
+
+    /**
      * Fetch indexable data for given store, attributes, and entity IDs.
      *
+     * Correctly handles Store View Scoping:
+     * - Fetches values for Store 0 (Default) and Current Store.
+     * - Prioritizes Current Store values over Default values.
+     *
      * @param int $storeId Store ID to index for
-     * @param \Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface[] $attributes Attributes to index
+     * @param CustomEntityAttributeInterface[] $attributes Attributes to index
      * @param int[] $entityIds Entity IDs to index
-     * @return array Structure: [ ['entity_id' => ..., 'attribute_id' => ..., 'store_id' => ..., 'value' => ...], ... ]
+     * @return array<int, array<string, int|string>>
      * @throws LocalizedException
      */
     private function fetchIndexData(int $storeId, array $attributes, array $entityIds): array
@@ -238,25 +252,32 @@ class Fulltext
             }
 
             $attributeTableSuffix = self::BACKEND_TABLE_MAP[$backendType];
-            $attributeTable = $this->resourceConnection->getTableName(self::TABLE_PREFIX . $attributeTableSuffix);
+            $attributeTable = $this->resourceConnection->getTableName(
+                self::TABLE_PREFIX . $attributeTableSuffix
+            );
 
             if (!$this->connection->isTableExists($attributeTable)) {
                 continue;
             }
 
-            // Build the query
+            // Select values for both global (0) and specific store
             $select = $this->connection->select();
             $select->from(['e' => $entityTable], ['entity_id'])
                 ->joinInner(
                     ['ea' => $attributeTable],
                     "e.{$linkField} = ea.{$linkField}",
                     [
-                        'value' => 'ea.value'
+                        'value' => 'ea.value',
+                        'store_id' => 'ea.store_id'
                     ]
                 )
                 ->where('ea.attribute_id = ?', $attributeId)
                 ->where('ea.store_id IN (?)', [0, $storeId])
                 ->where('e.entity_id IN (?)', $entityIds);
+
+            // ORDER BY store_id ASC guarantees Store 0 (Default) comes before Store ID (Specific).
+            // This order is critical for the overwrite logic in process*AttributeRows.
+            $select->order('ea.store_id ' . Select::SQL_ASC);
 
             $rows = $this->connection->fetchAll($select);
 
@@ -273,16 +294,16 @@ class Fulltext
     /**
      * Process attribute rows and add to index data.
      *
-     * @param array $rows The query result rows
-     * @param \Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface $attribute The attribute being processed
+     * @param array<int, array<string, mixed>> $rows The query result rows
+     * @param CustomEntityAttributeInterface $attribute The attribute being processed
      * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID
-     * @param array &$indexData Reference to the index data array to fill
+     * @param int $storeId Store ID being indexed
+     * @param array<int, array<string, mixed>> &$indexData Reference to the index data array to fill
      * @return void
      */
     private function processAttributeRows(
         array $rows,
-        $attribute,
+        CustomEntityAttributeInterface $attribute,
         int $attributeId,
         int $storeId,
         array &$indexData
@@ -295,12 +316,14 @@ class Fulltext
     }
 
     /**
-     * Process multiselect attribute rows.
+     * Process multiselect attribute rows with scope fallback.
      *
-     * @param array $rows The query result rows
-     * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID
-     * @param array &$indexData Reference to the index data array to fill
+     * If a specific store value exists, it completely replaces the default value.
+     *
+     * @param array<int, array<string, mixed>> $rows
+     * @param int $attributeId
+     * @param int $storeId
+     * @param array<int, array<string, mixed>> &$indexData
      * @return void
      */
     private function processMultiselectAttributeRows(
@@ -309,32 +332,70 @@ class Fulltext
         int $storeId,
         array &$indexData
     ): void {
+        $entityValues = [];
+
         foreach ($rows as $row) {
-            if (empty($row['value'])) {
+            $entityId = $row['entity_id'];
+            $rowStoreId = (int)$row['store_id'];
+            $rawValue = (string)$row['value'];
+
+            // Initialize tracking for this entity if not present
+            if (!isset($entityValues[$entityId])) {
+                $entityValues[$entityId] = [
+                    'values' => [],
+                    'is_specific' => false
+                ];
+            }
+
+            // If we encounter a specific store value (and it's not the default 0 store),
+            // it overrides any previously collected default values.
+            if ($rowStoreId === $storeId && $storeId !== 0) {
+                // If this is the first time we see specific data, clear potential defaults
+                if (!$entityValues[$entityId]['is_specific']) {
+                    $entityValues[$entityId]['values'] = [];
+                    $entityValues[$entityId]['is_specific'] = true;
+                }
+            }
+
+            // If we have already found a specific value, ignore default (store 0) values.
+            // (Note: The SQL ASC sort usually prevents this, but this is a safety check)
+            if ($rowStoreId === 0 && $entityValues[$entityId]['is_specific']) {
                 continue;
             }
 
-            $values = explode(',', (string)$row['value']);
-            foreach ($values as $singleValue) {
-                if (!empty($singleValue)) {
-                    $indexData[] = [
-                        'entity_id' => $row['entity_id'],
-                        'attribute_id' => $attributeId,
-                        'store_id' => $storeId,
-                        'value' => trim($singleValue),
-                    ];
+            // Parse and collect values
+            if (!empty($rawValue)) {
+                $values = explode(',', $rawValue);
+                foreach ($values as $val) {
+                    $trimVal = trim($val);
+                    if ($trimVal !== '') {
+                        $entityValues[$entityId]['values'][] = $trimVal;
+                    }
                 }
+            }
+        }
+
+        // Convert the aggregated entity values into the flat index data format
+        foreach ($entityValues as $entityId => $data) {
+            // Unique values to prevent duplicates
+            foreach (array_unique($data['values']) as $val) {
+                $indexData[] = [
+                    'entity_id' => $entityId,
+                    'attribute_id' => $attributeId,
+                    'store_id' => $storeId,
+                    'value' => $val
+                ];
             }
         }
     }
 
     /**
-     * Process regular attribute rows.
+     * Process regular (scalar) attribute rows with scope fallback.
      *
-     * @param array $rows The query result rows
-     * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID
-     * @param array &$indexData Reference to the index data array to fill
+     * @param array<int, array<string, mixed>> $rows
+     * @param int $attributeId
+     * @param int $storeId
+     * @param array<int, array<string, mixed>> &$indexData
      * @return void
      */
     private function processRegularAttributeRows(
@@ -343,20 +404,28 @@ class Fulltext
         int $storeId,
         array &$indexData
     ): void {
+        $processedEntities = [];
+
         foreach ($rows as $row) {
+            // Due to SQL ordering (store_id ASC), the default value (store 0) comes first.
+            // If a specific value (store X) exists later in the loop, it overwrites the default.
             if ($row['value'] !== null && $row['value'] !== '') {
-                $indexData[] = [
-                    'entity_id' => $row['entity_id'],
-                    'attribute_id' => $attributeId,
-                    'store_id' => $storeId,
-                    'value' => $row['value'],
-                ];
+                $processedEntities[$row['entity_id']] = $row['value'];
             }
+        }
+
+        foreach ($processedEntities as $entityId => $value) {
+            $indexData[] = [
+                'entity_id' => $entityId,
+                'attribute_id' => $attributeId,
+                'store_id' => $storeId,
+                'value' => $value,
+            ];
         }
     }
 
     /**
-     * Get entity link field (usually entity_id)
+     * Get entity link field (usually entity_id or row_id).
      *
      * @return string
      */
@@ -372,7 +441,7 @@ class Fulltext
     /**
      * Get attributes that should be indexed.
      *
-     * @return \Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface[]
+     * @return CustomEntityAttributeInterface[]
      */
     private function getIndexableAttributes(): array
     {
@@ -382,7 +451,7 @@ class Fulltext
     /**
      * Insert collected data into the index table.
      *
-     * @param array $indexData
+     * @param array<int, array<string, mixed>> $indexData
      * @return void
      */
     private function insertIndexData(array $indexData): void
@@ -398,6 +467,7 @@ class Fulltext
 
             foreach ($batch as $row) {
                 if (isset($row['entity_id'], $row['attribute_id'], $row['store_id'], $row['value'])) {
+                    // Final check to ensure we don't insert empty strings
                     if ($row['value'] === null || $row['value'] === '') {
                         continue;
                     }
