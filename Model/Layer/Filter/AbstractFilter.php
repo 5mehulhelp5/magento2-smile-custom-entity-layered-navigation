@@ -17,11 +17,12 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter;
 
 use Magento\Framework\DataObject;
+use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\SerializerInterface;
 use Magento\Catalog\Model\Layer\Filter\FilterInterface;
-use Magento\Store\Model\StoreManagerInterface;
 use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
+use Magento\Store\Model\StoreManagerInterface;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
@@ -30,7 +31,7 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
  */
 abstract class AbstractFilter extends DataObject implements FilterInterface
 {
-    const ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS = 1;
+    public const int ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS = 1;
 
     /**
      * Request variable name with filter value
@@ -47,34 +48,6 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     protected $_items;
 
     /**
-     * Filter item factory
-     *
-     * @var ItemFactory
-     */
-    protected $_filterItemFactory;
-
-    /**
-     * Store manager
-     *
-     * @var StoreManagerInterface
-     */
-    protected $_storeManager;
-
-    /**
-     * Catalog layer
-     *
-     * @var Layer
-     */
-    protected $_entityLayer;
-
-    /**
-     * Item Data Builder
-     *
-     * @var DataBuilder
-     */
-    protected $itemDataBuilder;
-
-    /**
      * @param ItemFactory $filterItemFactory
      * @param StoreManagerInterface $storeManager
      * @param Layer $layer
@@ -82,17 +55,14 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      * @param array $data
      */
     public function __construct(
-        ItemFactory $filterItemFactory,
-        StoreManagerInterface $storeManager,
-        Layer $layer,
-        DataBuilder $itemDataBuilder,
+        protected readonly ItemFactory $filterItemFactory,
+        protected readonly StoreManagerInterface $storeManager,
+        protected readonly Layer $layer,
+        protected readonly DataBuilder $itemDataBuilder,
         array $data = []
     ) {
-        $this->_filterItemFactory = $filterItemFactory;
-        $this->_storeManager = $storeManager;
-        $this->_entityLayer = $layer;
-        $this->itemDataBuilder = $itemDataBuilder;
         parent::__construct($data);
+        
         if ($this->hasAttributeModel()) {
             $this->_requestVar = $this->getAttributeModel()->getAttributeCode();
         }
@@ -179,11 +149,11 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     /**
      * Apply filter to collection
      *
-     * @param \Magento\Framework\App\RequestInterface $request
+     * @param RequestInterface $request
      * @return $this
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
-    public function apply(\Magento\Framework\App\RequestInterface $request)
+    public function apply(\RequestInterface $request)
     {
         return $this;
     }
