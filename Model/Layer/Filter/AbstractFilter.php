@@ -165,7 +165,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      */
     public function getLayer(): Layer
     {
-        return $this->_entityLayer;
+        return $this->layer;
     }
 
     /**
@@ -213,7 +213,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      */
     protected function _createItem($label, $value, $count = 0)
     {
-        return $this->_filterItemFactory->create()
+        return $this->filterItemFactory->create()
             ->setFilter($this)
             ->setLabel($label)
             ->setValue($value)
@@ -289,7 +289,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     {
         $storeId = $this->_getData('store_id');
         if ($storeId === null) {
-            $storeId = $this->_storeManager->getStore()->getId();
+            $storeId = $this->storeManager->getStore()->getId();
         }
         return $storeId;
     }
@@ -314,7 +314,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     {
         $websiteId = $this->_getData('website_id');
         if ($websiteId === null) {
-            $websiteId = $this->_storeManager->getStore()->getWebsiteId();
+            $websiteId = $this->storeManager->getStore()->getWebsiteId();
         }
         return $websiteId;
     }
