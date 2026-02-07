@@ -17,13 +17,11 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
 use Magento\Eav\Model\Config as EavConfig;
-use Magento\Eav\Model\Entity\Attribute\ScopedAttributeInterface;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
 use Psr\Log\LoggerInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
-use Smile\ScopedEav\Api\Data\EntityInterface;
 
 /**
  * Layer Resource Model.
@@ -37,7 +35,12 @@ class Layer
     private const ENTITY_TYPE_CODE = 'smile_custom_entity';
 
     /**
-     * Column storing option IDs or boolean values in the index/int tables
+     * Attribute code for active status
+     */
+    private const ATTRIBUTE_CODE_IS_ACTIVE = 'is_active';
+
+    /**
+     * Column storing option IDs or boolean values in the index tables
      */
     private const AGGREGATION_FIELD = 'value';
 
@@ -75,10 +78,9 @@ class Layer
             return null;
         }
 
-        // Retrieve is_active attribute configuration using the interface constant
-        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, EntityInterface::IS_ACTIVE);
+        // Retrieve is_active attribute configuration
+        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, self::ATTRIBUTE_CODE_IS_ACTIVE);
         $activeAttributeId = (int) $activeAttribute->getAttributeId();
-        $isGlobal = $activeAttribute->getIsGlobal() == ScopedAttributeInterface::SCOPE_GLOBAL;
 
         $appliedFilters = $this->state->getFiltersData();
 
@@ -91,49 +93,41 @@ class Layer
             ->where('e.attribute_set_id = ?', $attributeSetId);
 
         // Filter by is_active = 1
-        // We join the integer backend table since is_active is an EAV attribute, not a static column.
-        if ($isGlobal) {
-            // Global scope: simpler join on store_id = 0
-            $select->joinInner(
-                ['active_idx' => $intTable],
-                $connection->quoteInto(
-                    "e.entity_id = active_idx.entity_id AND active_idx.attribute_id = ? AND active_idx.store_id = 0 AND active_idx.value = 1",
-                    $activeAttributeId
-                ),
-                []
-            );
-        } else {
-            // Scoped attribute: Join Default (0) and Current Store to handle fallback
+        // Implement robust EAV fallback (Store Value > Default Value)
+        // We do not rely on 'is_global' config to ensure data visibility even if data is scoped inconsistently.
+        
+        // Join Default Values (Store 0)
+        $select->joinLeft(
+            ['active_d' => $intTable],
+            $connection->quoteInto(
+                "e.entity_id = active_d.entity_id AND active_d.attribute_id = ? AND active_d.store_id = 0",
+                $activeAttributeId
+            ),
+            []
+        );
+
+        if ($storeId > 0) {
+            // Join Store Values
             $select->joinLeft(
-                ['active_d' => $intTable],
+                ['active_s' => $intTable],
                 $connection->quoteInto(
-                    "e.entity_id = active_d.entity_id AND active_d.attribute_id = ? AND active_d.store_id = 0",
-                    $activeAttributeId
+                    "e.entity_id = active_s.entity_id AND active_s.attribute_id = ? AND active_s.store_id = ?",
+                    $activeAttributeId,
+                    $storeId
                 ),
                 []
             );
 
-            if ($storeId > 0) {
-                $select->joinLeft(
-                    ['active_s' => $intTable],
-                    $connection->quoteInto(
-                        "e.entity_id = active_s.entity_id AND active_s.attribute_id = ? AND active_s.store_id = ?",
-                        $activeAttributeId,
-                        $storeId
-                    ),
-                    []
-                );
-
-                // Check Value: Use Store value if exists, otherwise Default value
-                $checkActiveSql = $connection->getCheckSql(
-                    'active_s.value_id IS NOT NULL',
-                    'active_s.value',
-                    'active_d.value'
-                );
-                $select->where($checkActiveSql . ' = 1');
-            } else {
-                $select->where('active_d.value = 1');
-            }
+            // Use Store value if it exists, otherwise Default value
+            $checkActiveSql = $connection->getCheckSql(
+                'active_s.value_id IS NOT NULL',
+                'active_s.value',
+                'active_d.value'
+            );
+            $select->where($checkActiveSql . ' = 1');
+        } else {
+            // Only Default Store available
+            $select->where('active_d.value = 1');
         }
 
         if (empty($appliedFilters)) {
