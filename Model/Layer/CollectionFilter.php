@@ -36,7 +36,8 @@ class CollectionFilter implements CollectionFilterInterface
             [
                 'name',
                 'image',
-                'url_key'
+                'url_key',
+                'attribute_set_id'
             ]
         );
     }
