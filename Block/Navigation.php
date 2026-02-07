@@ -22,6 +22,7 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\AvailabilityFlagInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterList;
+use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
 
 /**
  * Layered Navigation View Block for Custom Entities.
@@ -137,12 +138,10 @@ class Navigation extends Template
     private function configureToolbarBlock(): void
     {
         $toolbarBlock = $this->getLayout()->getBlock(self::ENTITY_LISTING_TOOLBAR_BLOCK);
-        if ($toolbarBlock) {
+        
+        if ($toolbarBlock instanceof Toolbar) {
             $collection = $this->getLayer()->getEntityCollection();
-            // Ensure the toolbar block has the setCollection method before calling it
-            if (method_exists($toolbarBlock, 'setCollection')) {
-                $toolbarBlock->setCollection($collection);
-            }
+            $toolbarBlock->setCollection($collection);
         }
     }
 }
