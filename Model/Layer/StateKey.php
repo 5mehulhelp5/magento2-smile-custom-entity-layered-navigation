@@ -17,19 +17,15 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\StateKeyInterface;
+use Magento\Store\Model\StoreManagerInterface;
 
 class StateKey implements StateKeyInterface
 {
     /**
-     * @var \Magento\Store\Model\StoreManagerInterface
-     */
-    protected $storeManager;
-
-    /**
-     * @param \Magento\Store\Model\StoreManagerInterface $storeManager
+     * @param StoreManagerInterface $storeManager
      */
     public function __construct(
-        \Magento\Store\Model\StoreManagerInterface $storeManager
+        protected readonly StoreManagerInterface $storeManager
     ) {
         $this->storeManager = $storeManager;
     }
@@ -42,7 +38,7 @@ class StateKey implements StateKeyInterface
      */
     public function toString($entity): string
     {
-        return 'STORE_' . $this->storeManager->getStore()->getId()
-            . '_CAT_' . $entity->getAttributeSetId();
+        return 'STORE_' . $this->storeManager->getStore()->getId() . 
+            '_CAT_' . $entity->getAttributeSetId();
     }
 }
