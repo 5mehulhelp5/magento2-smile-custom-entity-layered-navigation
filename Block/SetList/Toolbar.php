@@ -97,6 +97,19 @@ class Toolbar extends NativeToolbar
     }
 
     /**
+     * Retrieve available sort orders
+     *
+     * @return array
+     */
+    public function getAvailableOrders()
+    {
+        if ($this->_availableOrder === null) {
+            $this->_availableOrder = SortBy::toArray();
+        }
+        return $this->_availableOrder;
+    }
+
+    /**
      * Set collection to pager
      *
      * Override strictly to apply custom entity parameters (limit/order)
