@@ -229,7 +229,7 @@ class Fulltext
      *
      * Correctly handles Store View Scoping:
      * - Fetches values for Store 0 (Default) and Current Store.
-     * - Prioritizes Current Store values over Default values.
+     * - Prioritizes Current Store values over Default values via SQL ordering.
      *
      * @param int $storeId Store ID to index for
      * @param CustomEntityAttributeInterface[] $attributes Attributes to index
@@ -318,7 +318,8 @@ class Fulltext
     /**
      * Process multiselect attribute rows with scope fallback.
      *
-     * If a specific store value exists, it completely replaces the default value.
+     * Optimization: Uses "Last Write Wins" based on Store ID ordering to determine the winning value string,
+     * reducing memory overhead of intermediate arrays.
      *
      * @param array<int, array<string, mixed>> $rows
      * @param int $attributeId
@@ -332,59 +333,33 @@ class Fulltext
         int $storeId,
         array &$indexData
     ): void {
-        $entityValues = [];
+        $entityRawValues = [];
 
+        // Step 1: Resolve "Winning" Value per Entity (Specific overrides Default)
+        // Relies on SQL 'ORDER BY store_id ASC' ensuring Default (0) comes before Specific ($storeId).
+        // If a specific row exists (even empty), it overrides the default row.
         foreach ($rows as $row) {
-            $entityId = $row['entity_id'];
-            $rowStoreId = (int)$row['store_id'];
-            $rawValue = (string)$row['value'];
-
-            // Initialize tracking for this entity if not present
-            if (!isset($entityValues[$entityId])) {
-                $entityValues[$entityId] = [
-                    'values' => [],
-                    'is_specific' => false
-                ];
-            }
-
-            // If we encounter a specific store value (and it's not the default 0 store),
-            // it overrides any previously collected default values.
-            if ($rowStoreId === $storeId && $storeId !== 0) {
-                // If this is the first time we see specific data, clear potential defaults
-                if (!$entityValues[$entityId]['is_specific']) {
-                    $entityValues[$entityId]['values'] = [];
-                    $entityValues[$entityId]['is_specific'] = true;
-                }
-            }
-
-            // If we have already found a specific value, ignore default (store 0) values.
-            // (Note: The SQL ASC sort usually prevents this, but this is a safety check)
-            if ($rowStoreId === 0 && $entityValues[$entityId]['is_specific']) {
-                continue;
-            }
-
-            // Parse and collect values
-            if (!empty($rawValue)) {
-                $values = explode(',', $rawValue);
-                foreach ($values as $val) {
-                    $trimVal = trim($val);
-                    if ($trimVal !== '') {
-                        $entityValues[$entityId]['values'][] = $trimVal;
-                    }
-                }
-            }
+            $entityRawValues[$row['entity_id']] = (string)$row['value'];
         }
 
-        // Convert the aggregated entity values into the flat index data format
-        foreach ($entityValues as $entityId => $data) {
-            // Unique values to prevent duplicates
-            foreach (array_unique($data['values']) as $val) {
-                $indexData[] = [
-                    'entity_id' => $entityId,
-                    'attribute_id' => $attributeId,
-                    'store_id' => $storeId,
-                    'value' => $val
-                ];
+        // Step 2: Explode and index
+        foreach ($entityRawValues as $entityId => $rawValue) {
+            if ($rawValue === '') {
+                continue;
+            }
+            
+            // Explode once per entity instead of per row
+            $values = explode(',', $rawValue);
+            foreach (array_unique($values) as $val) {
+                $trimVal = trim($val);
+                if ($trimVal !== '') {
+                    $indexData[] = [
+                        'entity_id' => $entityId,
+                        'attribute_id' => $attributeId,
+                        'store_id' => $storeId,
+                        'value' => $trimVal
+                    ];
+                }
             }
         }
     }
@@ -409,18 +384,19 @@ class Fulltext
         foreach ($rows as $row) {
             // Due to SQL ordering (store_id ASC), the default value (store 0) comes first.
             // If a specific value (store X) exists later in the loop, it overwrites the default.
-            if ($row['value'] !== null && $row['value'] !== '') {
-                $processedEntities[$row['entity_id']] = $row['value'];
-            }
+            $processedEntities[$row['entity_id']] = (string)$row['value'];
         }
 
         foreach ($processedEntities as $entityId => $value) {
-            $indexData[] = [
-                'entity_id' => $entityId,
-                'attribute_id' => $attributeId,
-                'store_id' => $storeId,
-                'value' => $value,
-            ];
+            // Skip empty values from index
+            if ($value !== '') {
+                $indexData[] = [
+                    'entity_id' => $entityId,
+                    'attribute_id' => $attributeId,
+                    'store_id' => $storeId,
+                    'value' => $value,
+                ];
+            }
         }
     }
 
