@@ -35,11 +35,6 @@ class Layer
     private const ENTITY_TYPE_CODE = 'smile_custom_entity';
 
     /**
-     * Attribute code for the 'is_active' status
-     */
-    private const IS_ACTIVE_ATTRIBUTE_CODE = 'is_active';
-
-    /**
      * Column storing option IDs or boolean values in the index/int tables
      */
     private const AGGREGATION_FIELD = 'value';
@@ -72,14 +67,10 @@ class Layer
         $connection = $this->resourceConnection->getConnection();
         $indexTable = $this->resourceConnection->getTableName('amadeco_custom_entity_index_eav_idx');
         $entityTable = $this->resourceConnection->getTableName('smile_custom_entity');
-        $intTable = $this->resourceConnection->getTableName('smile_custom_entity_int');
 
         if (!$connection->isTableExists($indexTable)) {
             return null;
         }
-
-        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, self::IS_ACTIVE_ATTRIBUTE_CODE);
-        $activeAttributeId = (int) $activeAttribute->getAttributeId();
 
         $appliedFilters = $this->state->getFiltersData(); // ['attribute_id' => value(s), ...]
 
@@ -89,17 +80,8 @@ class Layer
 
         $select = $connection->select();
         $select->from(['e' => $entityTable], ['entity_id'])
-            ->where('e.attribute_set_id = ?', $attributeSetId);
-
-        $select->joinLeft(
-            ['ea' => $intTable],
-            sprintf(
-                'e.entity_id = ea.entity_id AND ea.attribute_id = %d AND ea.store_id IN (0, %d)',
-                $activeAttributeId,
-                $storeId
-            ),
-            []
-        )->where('ea.' . self::AGGREGATION_FIELD . ' = 1');
+            ->where('e.attribute_set_id = ?', $attributeSetId)
+            ->where('e.is_active = ?', 1);
 
         if (empty($appliedFilters)) {
             return $select;
