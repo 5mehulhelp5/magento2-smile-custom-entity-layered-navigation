@@ -16,13 +16,13 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\Collection;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\CollectionFactory as CustomEntityAttributeCollectionFactory;
 use Magento\Eav\Model\Entity\Attribute\Source\Table as TableSource;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Store\Model\StoreManagerInterface;
 use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\Collection;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\CollectionFactory as CustomEntityAttributeCollectionFactory;
 
 /**
  * Provides list of filterable attributes for the layer context.
