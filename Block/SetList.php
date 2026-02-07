@@ -17,13 +17,11 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block;
 
 use Magento\Framework\DataObject\IdentityInterface;
-use Magento\Framework\Data\Helper\PostHelper;
 use Magento\Framework\View\Element\Template;
 use Magento\Framework\View\Element\Template\Context;
 use Magento\Eav\Api\Data\AttributeSetInterface;
 use Smile\CustomEntity\Model\CustomEntity;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
-use Smile\CustomEntity\Model\ResourceModel\CustomEntity\CollectionFactory as CustomEntityCollectionFactory;
 use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
@@ -54,15 +52,11 @@ class SetList extends Template implements IdentityInterface
 
     /**
      * @param Context $context
-     * @param PostHelper $postDataHelper
-     * @param CustomEntityCollectionFactory $customEntityCollectionFactory
      * @param LayerResolver $layerResolver
      * @param array $data Block data.
      */
     public function __construct(
         protected Context $context,
-        protected PostHelper $postDataHelper,
-        private CustomEntityCollectionFactory $customEntityCollectionFactory,
         private LayerResolver $layerResolver,
         array $data = []
     ) {
