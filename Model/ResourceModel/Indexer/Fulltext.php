@@ -23,7 +23,6 @@ use Magento\Framework\Exception\LocalizedException;
 use Magento\Store\Model\StoreManagerInterface;
 use Smile\CustomEntity\Api\Data\CustomEntityInterface;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\CollectionFactory as EntityCollectionFactory;
-use Amadeco\SmileCustomEntityLayeredNavigation\Api\Data\FilterableAttributeInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeList;
 
 /**
@@ -40,41 +39,6 @@ class Fulltext
      * @var string Index table name - IMPORTANT: Make sure this matches db_schema.xml exactly
      */
     private string $mainTable = 'amadeco_custom_entity_index_eav_idx';
-
-    /**
-     * @var ResourceConnection
-     */
-    private ResourceConnection $resourceConnection;
-
-    /**
-     * @var AdapterInterface DB Connection
-     */
-    private AdapterInterface $connection;
-
-    /**
-     * @var StoreManagerInterface
-     */
-    private StoreManagerInterface $storeManager;
-
-    /**
-     * @var FilterableAttributeList
-     */
-    private FilterableAttributeList $filterableAttributeList;
-
-    /**
-     * @var EntityCollectionFactory
-     */
-    private EntityCollectionFactory $entityCollectionFactory;
-
-    /**
-     * @var MetadataPool Used to get entity metadata like link field
-     */
-    private MetadataPool $metadataPool;
-
-    /**
-     * @var string[] Attributes to index (based on frontend input type)
-     */
-    private const INDEXABLE_INPUT_TYPES = ['select', 'multiselect', 'boolean'];
 
     /**
      * @var array Map backend_type to EAV table suffix
@@ -100,20 +64,14 @@ class Fulltext
      * @param MetadataPool $metadataPool
      */
     public function __construct(
-        ResourceConnection $resourceConnection,
-        StoreManagerInterface $storeManager,
-        FilterableAttributeList $filterableAttributeList,
-        EntityCollectionFactory $entityCollectionFactory,
-        MetadataPool $metadataPool
+        protected readonly ResourceConnection $resourceConnection,
+        protected readonly StoreManagerInterface $storeManager,
+        protected readonly FilterableAttributeList $filterableAttributeList,
+        protected readonly EntityCollectionFactory $entityCollectionFactory,
+        protected readonly MetadataPool $metadataPool
     ) {
-        $this->resourceConnection = $resourceConnection;
         $this->connection = $resourceConnection->getConnection();
         $this->mainTable = $resourceConnection->getTableName($this->mainTable);
-
-        $this->storeManager = $storeManager;
-        $this->filterableAttributeList = $filterableAttributeList;
-        $this->entityCollectionFactory = $entityCollectionFactory;
-        $this->metadataPool = $metadataPool;
     }
 
     /**
@@ -145,14 +103,7 @@ class Fulltext
 
             try {
                 foreach ($stores as $store) {
-                    $storeId = (int)$store->getId();
-                    $entityIds = $this->getAllEntityIds();
-
-                    if (empty($entityIds)) {
-                        continue;
-                    }
-
-                    $this->processEntityBatches($entityIds, $attributes, $storeId);
+                    $this->indexStore((int)$store->getId(), $attributes);
                 }
 
                 $this->connection->commit();
@@ -172,34 +123,42 @@ class Fulltext
     }
 
     /**
-     * Process entity batches for indexing.
+     * Index all entities for a specific store using keyset pagination to avoid memory issues.
      *
-     * @param array $entityIds Entity IDs to process
-     * @param array $attributes Attributes to index
-     * @param int $storeId Current store ID
+     * @param int $storeId
+     * @param array $attributes
      * @return void
+     * @throws LocalizedException
      */
-    private function processEntityBatches(array $entityIds, array $attributes, int $storeId): void
+    private function indexStore(int $storeId, array $attributes): void
     {
-        $batches = array_chunk($entityIds, self::BATCH_SIZE);
-        foreach ($batches as $batchIds) {
-            $indexedData = $this->fetchIndexData($storeId, $attributes, $batchIds);
+        $lastEntityId = 0;
+
+        while (true) {
+            $collection = $this->entityCollectionFactory->create();
+            $collection->addAttributeToSelect('entity_id');
+            $collection->addAttributeToFilter('is_active', 1);
+            $collection->addAttributeToFilter('entity_id', ['gt' => $lastEntityId]);
+            $collection->setOrder('entity_id', 'ASC');
+            $collection->setPageSize(self::BATCH_SIZE);
+
+            if ($collection->count() === 0) {
+                break;
+            }
+
+            $entityIds = [];
+            foreach ($collection as $entity) {
+                $entityIds[] = (int)$entity->getId();
+                $lastEntityId = (int)$entity->getId();
+            }
+
+            if (empty($entityIds)) {
+                break;
+            }
+
+            $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
             $this->insertIndexData($indexedData);
         }
-    }
-
-    /**
-     * Get all active entity IDs to be indexed.
-     *
-     * @return array
-     */
-    private function getAllEntityIds(): array
-    {
-        $collection = $this->entityCollectionFactory->create();
-        $collection->addAttributeToSelect('entity_id');
-        $collection->addAttributeToFilter('is_active', 1);
-
-        return $collection->getAllIds();
     }
 
     /**
