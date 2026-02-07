@@ -17,6 +17,7 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList;
 
 use Amadeco\SmileCustomEntityLayeredNavigation\Helper\SetList;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Config\Source\SortBy;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Set\SetList\Toolbar as ToolbarModel;
 use Magento\Catalog\Block\Product\ProductList\Toolbar as NativeToolbar;
 use Magento\Catalog\Model\Config as CatalogConfig;
@@ -32,8 +33,8 @@ use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 /**
  * Custom Entity List Toolbar
  *
- * Extends Native Catalog Toolbar to inherit pagination/sorting logic
- * while overriding state retrieval to support Custom Entity parameters.
+ * Extends Native Catalog Toolbar to inherit pagination logic
+ * but overrides Sorting and State retrieval for Custom Entities.
  */
 class Toolbar extends NativeToolbar
 {
@@ -68,7 +69,7 @@ class Toolbar extends NativeToolbar
         protected FormKey $formKey,
         array $data = []
     ) {
-        // Pass native dependencies to parent to satisfy constructor contract
+        // Injection des dépendances natives pour satisfaire le contrat du parent
         parent::__construct(
             $context,
             $catalogSession,
@@ -79,6 +80,20 @@ class Toolbar extends NativeToolbar
             $postDataHelper,
             $data
         );
+    }
+
+    /**
+     * Surcharge critique : Charge les options de tri des Entités (et non des Produits).
+     *
+     * @return $this
+     */
+    protected function loadAvailableOrders()
+    {
+        if ($this->_availableOrder === null) {
+            // Utilisation de la source SortBy du module Custom Entity
+            $this->_availableOrder = SortBy::toArray();
+        }
+        return $this;
     }
 
     /**
