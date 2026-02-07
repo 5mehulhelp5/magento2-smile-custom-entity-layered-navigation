@@ -16,13 +16,11 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel;
 
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
-use Magento\Eav\Model\Config as EavConfig;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Select;
 use Magento\Framework\Exception\LocalizedException;
 use Psr\Log\LoggerInterface;
-use Smile\ScopedEav\Api\Data\EntityInterface;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\State;
 
 /**
  * Layer Resource Model.
@@ -30,27 +28,18 @@ use Smile\ScopedEav\Api\Data\EntityInterface;
  */
 class Layer
 {
-    /**
-     * Entity type code for custom entities
-     */
-    private const ENTITY_TYPE_CODE = 'smile_custom_entity';
-
-    /**
-     * Column storing option IDs or boolean values in the index/int tables
-     */
-    private const AGGREGATION_FIELD = 'value';
+    private const INDEX_TABLE_ALIAS = 'idx';
+    private const AGGREGATION_FIELD = 'value'; // Column storing option IDs or boolean values
 
     /**
      * @param ResourceConnection $resourceConnection
      * @param LoggerInterface $logger
      * @param State $state
-     * @param EavConfig $eavConfig
      */
     public function __construct(
-        protected readonly ResourceConnection $resourceConnection,
-        protected readonly LoggerInterface $logger,
-        protected readonly State $state,
-        protected readonly EavConfig $eavConfig
+        private readonly ResourceConnection $resourceConnection,
+        private readonly LoggerInterface $logger,
+        private readonly State $state
     ) {}
 
     /**
@@ -68,15 +57,10 @@ class Layer
         $connection = $this->resourceConnection->getConnection();
         $indexTable = $this->resourceConnection->getTableName('amadeco_custom_entity_index_eav_idx');
         $entityTable = $this->resourceConnection->getTableName('smile_custom_entity');
-        $intTable = $this->resourceConnection->getTableName('smile_custom_entity_int');
 
         if (!$connection->isTableExists($indexTable)) {
             return null;
         }
-
-        // Optimization: Get ID via PHP instead of SQL Subselect
-        $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, EntityInterface::IS_ACTIVE);
-        $activeAttributeId = (int) $activeAttribute->getAttributeId();
 
         $appliedFilters = $this->state->getFiltersData();
 
@@ -88,18 +72,18 @@ class Layer
         $select->from(['e' => $entityTable], ['entity_id'])
             ->where('e.attribute_set_id = ?', $attributeSetId);
 
-        // Restored Logic: Allow is_active=1 in either Default (0) or Current Store.
-        // This effectively matches the stable branch logic which was robust against data inconsistency.
+        // STABLE LOGIC: Use SQL Subselect for attribute ID and Loose Store Check
         $select->joinLeft(
-            ['active_idx' => $intTable],
-            $connection->quoteInto(
-                "e.entity_id = active_idx.entity_id AND active_idx.attribute_id = ? AND active_idx.store_id IN (0, ?)",
-                $activeAttributeId,
-                $storeId
-            ),
+            ['ea' => $this->resourceConnection->getTableName('smile_custom_entity_int')],
+            "e.entity_id = ea.entity_id AND ea.attribute_id = (
+                SELECT attribute_id FROM eav_attribute
+                WHERE attribute_code = 'is_active' AND entity_type_id = (
+                    SELECT entity_type_id FROM eav_entity_type WHERE entity_type_code = 'smile_custom_entity'
+                )
+            ) AND ea.store_id IN (0, {$storeId})",
             []
         )
-        ->where('active_idx.value = 1');
+        ->where('ea.value = 1');
 
         if (empty($appliedFilters)) {
             return $select;
@@ -108,8 +92,7 @@ class Layer
         $aliasCounter = 0;
         foreach ($appliedFilters as $attributeId => $value) {
             $alias = 'filter_' . $aliasCounter++;
-            
-            // Standardize Join Conditions for filters
+
             $conditions = [
                 "{$alias}.entity_id = e.entity_id",
                 $connection->quoteInto("{$alias}.attribute_id = ?", $attributeId),
