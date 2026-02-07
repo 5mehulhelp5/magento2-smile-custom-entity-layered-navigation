@@ -65,9 +65,10 @@ class Attribute extends AbstractDb
      * Apply attribute filter to entity collection.
      *
      * Filters the collection by joining the index table for the specific attribute value.
+     * Handles both single value (string/int) and multiple values (array) for multiselect.
      *
      * @param AbstractFilter $filter
-     * @param int|string $value
+     * @param int|string|array $value
      * @return $this
      */
     public function applyFilterToCollection($filter, $value): static
@@ -77,11 +78,16 @@ class Attribute extends AbstractDb
         $connection = $this->getConnection();
         $tableAlias = $attribute->getAttributeCode() . '_idx';
 
+        // Support for multiselect: use IN (?) if value is an array, otherwise use = ?
+        $valueCondition = is_array($value)
+            ? $connection->quoteInto("{$tableAlias}.value IN (?)", $value)
+            : $connection->quoteInto("{$tableAlias}.value = ?", $value);
+
         $conditions = [
             "{$tableAlias}.entity_id = e.entity_id",
             $connection->quoteInto("{$tableAlias}.attribute_id = ?", $attribute->getAttributeId()),
             $connection->quoteInto("{$tableAlias}.store_id = ?", $collection->getStoreId()),
-            $connection->quoteInto("{$tableAlias}.value = ?", $value),
+            $valueCondition,
         ];
 
         $collection->getSelect()->join(
@@ -89,6 +95,9 @@ class Attribute extends AbstractDb
             implode(' AND ', $conditions),
             []
         );
+
+        // Ensure distinct results if multiple rows match (common in multiselect)
+        $collection->getSelect()->distinct(true);
 
         return $this;
     }
