@@ -86,15 +86,34 @@ class Attribute extends AbstractFilter
     public function apply(\Magento\Framework\App\RequestInterface $request)
     {
         $filter = $request->getParam($this->_requestVar);
-        if (is_array($filter)) {
+        
+        if (empty($filter)) {
             return $this;
         }
-        $text = $this->getOptionText($filter);
-        if ($filter && strlen($text)) {
-            $this->_getResource()->applyFilterToCollection($this, $filter);
-            $this->getLayer()->getState()->addFilter($this->_createItem($text, $filter));
-            $this->_items = [];
+
+        // Handle Array (Multiselect) or String (Select)
+        $filterValues = is_array($filter) ? $filter : explode(',', $filter);
+        
+        // Clean values
+        $filterValues = array_filter($filterValues, fn($v) => $this->string->strlen((string)$v) > 0);
+
+        if (empty($filterValues)) {
+            return $this;
         }
+
+        // Apply to Resource
+        $this->_getResource()->applyFilterToCollection($this, $filterValues);
+
+        // Add State Tag
+        $state = $this->getLayer()->getState();
+        foreach ($filterValues as $val) {
+             $text = $this->getOptionText($val);
+             if ($text) {
+                 $state->addFilter($this->_createItem($text, $val));
+             }
+        }
+        
+        $this->_items = [];
         return $this;
     }
 
