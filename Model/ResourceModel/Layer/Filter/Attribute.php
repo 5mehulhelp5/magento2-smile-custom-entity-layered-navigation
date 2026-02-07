@@ -19,7 +19,7 @@ namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer\F
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer as LayerResource;
 use Magento\Framework\DB\Sql\Expression;
-use Magento\Framework\Model\ResourceModel\Context;
+use Magento\Framework\Model\ResourceModel\Db\Context; // <--- CORRECTED IMPORT
 use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
 
 /**
