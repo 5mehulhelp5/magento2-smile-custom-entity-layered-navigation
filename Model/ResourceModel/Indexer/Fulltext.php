@@ -36,6 +36,11 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeLi
 class Fulltext
 {
     /**
+     * @var string Prefix for custom entity tables
+     */
+    private const TABLE_PREFIX = 'smile_custom_entity_';
+    
+    /**
      * @var string Index table name - IMPORTANT: Make sure this matches db_schema.xml exactly
      */
     private string $mainTable = 'amadeco_custom_entity_index_eav_idx';
@@ -233,7 +238,7 @@ class Fulltext
             }
 
             $attributeTableSuffix = self::BACKEND_TABLE_MAP[$backendType];
-            $attributeTable = $this->resourceConnection->getTableName('smile_custom_entity_' . $attributeTableSuffix);
+            $attributeTable = $this->resourceConnection->getTableName(self::TABLE_PREFIX . $attributeTableSuffix);
 
             if (!$this->connection->isTableExists($attributeTable)) {
                 continue;
