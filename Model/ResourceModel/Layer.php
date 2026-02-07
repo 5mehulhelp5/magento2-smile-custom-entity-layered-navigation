@@ -9,7 +9,7 @@
  *
  * @category  Amadeco
  * @package   Amadeco_SmileCustomEntityLayeredNavigation
- * @copyright Copyright (c) Amadeco (https://www.amadeco.fr) - Ilan Parmentier
+ * @copyright Copyright (c) Amadeco (https://www.amadeco.fr)
  * @license   https://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  */
 declare(strict_types=1);
@@ -78,7 +78,6 @@ class Layer
             return null;
         }
 
-        // Optimization: Resolve Attribute ID in PHP to prevent Subquery in JOIN
         $activeAttribute = $this->eavConfig->getAttribute(self::ENTITY_TYPE_CODE, self::IS_ACTIVE_ATTRIBUTE_CODE);
         $activeAttributeId = (int) $activeAttribute->getAttributeId();
 
@@ -92,7 +91,6 @@ class Layer
         $select->from(['e' => $entityTable], ['entity_id'])
             ->where('e.attribute_set_id = ?', $attributeSetId);
 
-        // Optimized JOIN: Uses direct integer ID and AGGREGATION_FIELD constant
         $select->joinLeft(
             ['ea' => $intTable],
             sprintf(
@@ -110,40 +108,30 @@ class Layer
         $aliasCounter = 0;
         foreach ($appliedFilters as $attributeId => $value) {
             $alias = 'filter_' . $aliasCounter++;
+            
+            $conditions = [
+                "{$alias}.entity_id = e.entity_id",
+                $connection->quoteInto("{$alias}.attribute_id = ?", $attributeId),
+                $connection->quoteInto("{$alias}.store_id = ?", $storeId)
+            ];
 
+            // Handle Multiselect (Array) vs Single Select (Scalar)
             if (is_array($value)) {
-                $joinConditions = [];
-                foreach ($value as $singleValue) {
-                    $joinConditions[] = $connection->quoteInto(
-                        $alias . '.' . self::AGGREGATION_FIELD . ' = ?',
-                        $singleValue
-                    );
-                }
-
-                $joinCondition = sprintf(
-                    "%s.entity_id = e.entity_id AND %s.attribute_id = %d AND %s.store_id = %d AND (%s)",
-                    $alias,
-                    $alias,
-                    (int)$attributeId,
-                    $alias,
-                    $storeId,
-                    implode(' OR ', $joinConditions)
+                // Uses IN (?) which is optimized by the DB and handles array quoting automatically
+                $conditions[] = $connection->quoteInto(
+                    "{$alias}." . self::AGGREGATION_FIELD . ' IN (?)', 
+                    $value
                 );
             } else {
-                $joinCondition = sprintf(
-                    "%s.entity_id = e.entity_id AND %s.attribute_id = %d AND %s.store_id = %d AND %s",
-                    $alias,
-                    $alias,
-                    (int)$attributeId,
-                    $alias,
-                    $storeId,
-                    $connection->quoteInto($alias . '.' . self::AGGREGATION_FIELD . ' = ?', $value)
+                $conditions[] = $connection->quoteInto(
+                    "{$alias}." . self::AGGREGATION_FIELD . ' = ?', 
+                    $value
                 );
             }
 
             $select->joinInner(
                 [$alias => $indexTable],
-                $joinCondition,
+                implode(' AND ', $conditions),
                 []
             );
         }
