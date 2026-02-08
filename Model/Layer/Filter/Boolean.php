@@ -37,7 +37,7 @@ class Boolean extends AbstractFilter
     /**
      * @var AttributeResource
      */
-    protected AttributeResource $_resource;
+    protected AttributeResource $resource;
 
     /**
      * @param ItemFactory $filterItemFactory
@@ -59,7 +59,7 @@ class Boolean extends AbstractFilter
         protected readonly StripTags $tagFilter,
         array $data = []
     ) {
-        $this->_resource = $filterAttributeFactory->create();
+        $this->resource = $filterAttributeFactory->create();
 
         $this->_requestVar = 'attribute';
 
@@ -79,7 +79,7 @@ class Boolean extends AbstractFilter
      */
     protected function _getResource()
     {
-        return $this->_resource;
+        return $this->resource;
     }
 
     /**
@@ -92,14 +92,17 @@ class Boolean extends AbstractFilter
     public function apply(RequestInterface $request): self
     {
         $filter = $request->getParam($this->getRequestVar());
-
-        if ($filter !== null) {
-            $booleanFilter = (int)$filter;
-            $text = $booleanFilter ? __('Yes') : __('No');
-            $this->_getResource()->applyFilterToCollection($this, $filter);
-            $this->getLayer()->getState()->addFilter($this->_createItem($text, $filter));
-            $this->_items = [];
+        if ($filter === null) {
+            return $this;
         }
+
+        $booleanFilter = (int)$filter;
+        $text = $booleanFilter ? __('Yes') : __('No');
+        $this->_getResource()->applyFilterToCollection($this, $filter);
+        $this->getLayer()->getState()->addFilter($this->_createItem($text, $filter));
+
+        $this->_items = [];
+
         return $this;
     }
 
@@ -115,30 +118,27 @@ class Boolean extends AbstractFilter
 
         $options = $attribute->getFrontend()->getSelectOptions();
         $optionsCount = $this->_getResource()->getCount($this);
-
         foreach ($options as $option) {
-            // Skip invalid options (e.g., placeholder labels with array values)
-            if (is_array($option['value']) || !$this->stringUtil->strlen((string)$option['value'])) {
+            if (is_array($option['value'])) {
                 continue;
             }
-
-            // Check filter type
-            if ($this->getAttributeIsFilterable($attribute) === self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
-                if (empty($optionsCount[$option['value']])) {
-                    continue;
+            if ($this->stringUtil->strlen($option['value'])) {
+                // Check filter type
+                if ($this->getAttributeIsFilterable($attribute) === self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
+                    if (!empty($optionsCount[$option['value']])) {
+                        $this->itemDataBuilder->addItemData(
+                            $this->tagFilter->filter($option['label']),
+                            $option['value'],
+                            $optionsCount[$option['value']]
+                        );
+                    }
+                } else {
+                    $this->itemDataBuilder->addItemData(
+                        $this->tagFilter->filter($option['label']),
+                        $option['value'],
+                        $optionsCount[$option['value']] ?? 0
+                    );
                 }
-
-                $this->itemDataBuilder->addItemData(
-                    $this->tagFilter->filter($option['label']),
-                    $option['value'],
-                    $optionsCount[$option['value']]
-                );
-            } else {
-                $this->itemDataBuilder->addItemData(
-                    $this->tagFilter->filter($option['label']),
-                    $option['value'],
-                    isset($optionsCount[$option['value']]) ? $optionsCount[$option['value']] : 0
-                );
             }
         }
 

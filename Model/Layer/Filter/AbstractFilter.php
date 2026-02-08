@@ -16,15 +16,15 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
+use Magento\Catalog\Model\Layer\Filter\FilterInterface;
+use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
 use Magento\Framework\DataObject;
 use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\SerializerInterface;
-use Magento\Catalog\Model\Layer\Filter\FilterInterface;
-use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
 use Magento\Store\Model\StoreManagerInterface;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
 /**
  * Abstract Filter Model for Custom Entity Layered Navigation
@@ -62,7 +62,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
         array $data = []
     ) {
         parent::__construct($data);
-        
+
         if ($this->hasAttributeModel()) {
             $this->_requestVar = $this->getAttributeModel()->getAttributeCode();
         }
@@ -341,15 +341,15 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     }
 
     /**
-     * Get option text from frontend model by option id
+     * Get Option Text label for a given value ID.
      *
-     * @param   int $optionId
-     * @throws \Magento\Framework\Exception\LocalizedException
-     * @return  string|bool
+     * @param int|string $value
+     * @return string|bool
+     * @throws LocalizedException
      */
-    protected function getOptionText($optionId)
+    protected function getOptionText($value)
     {
-        return $this->getAttributeModel()->getFrontend()->getOption($optionId);
+        return $this->getAttributeModel()->getFrontend()->getOption($value);
     }
 
     /**

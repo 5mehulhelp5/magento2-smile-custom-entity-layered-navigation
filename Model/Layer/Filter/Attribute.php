@@ -69,6 +69,19 @@ class Attribute extends AbstractFilter
             $data
         );
         $this->resource = $resourceFactory->create();
+
+        $attribute = $this->getAttributeModel();
+        $this->_requestVar = $attribute->getAttributeCode();
+    }
+
+    /**
+     * Retrieve resource instance
+     *
+     * @return AttributeResource
+     */
+    protected function _getResource()
+    {
+        return $this->resource;
     }
 
     /**
@@ -84,42 +97,17 @@ class Attribute extends AbstractFilter
     public function apply(RequestInterface $request): static
     {
         // 1. Get the filter value from the request using the attribute code
-        $attribute = $this->getAttributeModel();
-        $filter = $request->getParam($attribute->getAttributeCode());
-
-        if (empty($filter)) {
+        $filter = $request->getParam($this->_requestVar);
+        if (is_array($filter)) {
             return $this;
         }
 
-        // 2. Normalize input: Support both comma-separated strings (GET standard) and arrays
-        $filterValues = is_array($filter) ? $filter : explode(',', (string)$filter);
-
-        // 3. Validate and Clean values
-        $filterValues = array_filter(
-            $filterValues,
-            fn($v) => $this->stringUtil->strlen((string)$v) > 0
-        );
-
-        if (empty($filterValues)) {
-            return $this;
+        $text = $this->getOptionText($filter);
+        if ($filter && $this->stringUtil->strlen($text)) {
+            $this->_getResource()->applyFilterToCollection($this, $filter);
+            $this->getLayer()->getState()->addFilter($this->_createItem($text, $filter));
+            $this->_items = [];
         }
-
-        // 4. Apply to Resource Model
-        // Pass the array directly to support multiselect "IN (?)" queries in the resource
-        $this->resource->applyFilterToCollection($this, $filterValues);
-
-        // 5. Update Layer State (User Interface)
-        // We create a state tag for the filter so the user sees it's active
-        $state = $this->getLayer()->getState();
-        foreach ($filterValues as $val) {
-            $label = $this->getOptionText($val);
-            if ($label) {
-                $state->addFilter($this->_createItem($label, $val));
-            }
-        }
-
-        // Clear items to force regeneration if needed
-        $this->_items = [];
 
         return $this;
     }
@@ -136,54 +124,32 @@ class Attribute extends AbstractFilter
     protected function _getItemsData(): array
     {
         $attribute = $this->getAttributeModel();
-
-        // Ensure the request variable matches the attribute code
-        $this->_requestVar = $attribute->getAttributeCode();
-
-        // 1. Get all possible options for this attribute
         $options = $attribute->getFrontend()->getSelectOptions();
-
-        // 2. Get counts for these options based on current filters
-        $optionsCount = $this->resource->getCount($this);
-
+        $optionsCount = $this->_getResource()->getCount($this);
         foreach ($options as $option) {
-            // Skip invalid options (e.g., placeholder labels with array values)
-            if (is_array($option['value']) || !$this->stringUtil->strlen((string)$option['value'])) {
+            if (is_array($option['value'])) {
                 continue;
             }
-
-            // Check filter type
-            if ($this->getAttributeIsFilterable($attribute) === self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
-                if (empty($optionsCount[$option['value']])) {
-                    continue;
+            if ($this->stringUtil->strlen($option['value'])) {
+                // Check filter type
+                if ($this->getAttributeIsFilterable($attribute) === self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
+                    if (!empty($optionsCount[$option['value']])) {
+                        $this->itemDataBuilder->addItemData(
+                            $this->tagFilter->filter($option['label']),
+                            $option['value'],
+                            $optionsCount[$option['value']]
+                        );
+                    }
+                } else {
+                    $this->itemDataBuilder->addItemData(
+                        $this->tagFilter->filter($option['label']),
+                        $option['value'],
+                        $optionsCount[$option['value']] ?? 0
+                    );
                 }
-
-                $this->itemDataBuilder->addItemData(
-                    $this->tagFilter->filter($option['label']),
-                    $option['value'],
-                    $optionsCount[$option['value']]
-                );
-            } else {
-                $this->itemDataBuilder->addItemData(
-                    $this->tagFilter->filter($option['label']),
-                    $option['value'],
-                    isset($optionsCount[$option['value']]) ? $optionsCount[$option['value']] : 0
-                );
             }
         }
 
         return $this->itemDataBuilder->build();
-    }
-
-    /**
-     * Get Option Text label for a given value ID.
-     *
-     * @param int|string $value
-     * @return string|bool
-     * @throws LocalizedException
-     */
-    protected function getOptionText($value): string|bool
-    {
-        return $this->getAttributeModel()->getFrontend()->getOption($value);
     }
 }
