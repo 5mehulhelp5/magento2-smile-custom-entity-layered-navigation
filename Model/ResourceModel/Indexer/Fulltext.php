@@ -16,81 +16,55 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Indexer;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeList;
 use Magento\Framework\App\ResourceConnection;
 use Magento\Framework\DB\Adapter\AdapterInterface;
+use Magento\Framework\DB\Select;
 use Magento\Framework\EntityManager\MetadataPool;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Store\Model\StoreManagerInterface;
+use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
 use Smile\CustomEntity\Api\Data\CustomEntityInterface;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\CollectionFactory as EntityCollectionFactory;
-use Amadeco\SmileCustomEntityLayeredNavigation\Api\Data\FilterableAttributeInterface;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterableAttributeList;
 
 /**
  * Resource Model for Custom Entity Layered Navigation Indexer.
  *
- * Handles the indexing of filterable attributes for custom entities to enable
- * layered navigation functionality.
- *
- * @SuppressWarnings(PHPMD.CouplingBetweenObjects)
+ * Implements the "Copy and Swap" Mview strategy (inspired by Magento\CatalogRule).
+ * Handles flat indexing of EAV attributes to enable high-performance layered navigation.
  */
 class Fulltext
 {
     /**
-     * @var string Index table name - IMPORTANT: Make sure this matches db_schema.xml exactly
+     * @var string Table prefix for custom entity EAV tables.
      */
-    private string $mainTable = 'amadeco_custom_entity_index_eav_idx';
+    private const string TABLE_PREFIX = 'smile_custom_entity_';
 
     /**
-     * @var ResourceConnection
+     * @var int Batch size for chunked database insertions.
      */
-    private ResourceConnection $resourceConnection;
+    private const int BATCH_SIZE = 1000;
 
     /**
-     * @var AdapterInterface DB Connection
+     * @var array<string, string> Map backend types to specific table suffixes.
      */
-    private AdapterInterface $connection;
-
-    /**
-     * @var StoreManagerInterface
-     */
-    private StoreManagerInterface $storeManager;
-
-    /**
-     * @var FilterableAttributeList
-     */
-    private FilterableAttributeList $filterableAttributeList;
-
-    /**
-     * @var EntityCollectionFactory
-     */
-    private EntityCollectionFactory $entityCollectionFactory;
-
-    /**
-     * @var MetadataPool Used to get entity metadata like link field
-     */
-    private MetadataPool $metadataPool;
-
-    /**
-     * @var string[] Attributes to index (based on frontend input type)
-     */
-    private const INDEXABLE_INPUT_TYPES = ['select', 'multiselect', 'boolean'];
-
-    /**
-     * @var array Map backend_type to EAV table suffix
-     */
-    private const BACKEND_TABLE_MAP = [
-        'int' => 'int',
-        'varchar' => 'varchar',
-        'text' => 'text',
-        'decimal' => 'decimal',
+    private const array BACKEND_TABLE_MAP = [
+        'int'      => 'int',
+        'varchar'  => 'varchar',
+        'text'     => 'text',
+        'decimal'  => 'decimal',
         'datetime' => 'datetime',
     ];
 
     /**
-     * @var int Batch size for processing entities
+     * @var string The main index table name.
      */
-    private const BATCH_SIZE = 500;
+    private string $mainTableName;
+
+    /**
+     * @var AdapterInterface Database Adapter.
+     */
+    private AdapterInterface $connection;
 
     /**
      * @param ResourceConnection $resourceConnection
@@ -100,70 +74,69 @@ class Fulltext
      * @param MetadataPool $metadataPool
      */
     public function __construct(
-        ResourceConnection $resourceConnection,
-        StoreManagerInterface $storeManager,
-        FilterableAttributeList $filterableAttributeList,
-        EntityCollectionFactory $entityCollectionFactory,
-        MetadataPool $metadataPool
+        protected readonly ResourceConnection $resourceConnection,
+        protected readonly StoreManagerInterface $storeManager,
+        protected readonly FilterableAttributeList $filterableAttributeList,
+        protected readonly EntityCollectionFactory $entityCollectionFactory,
+        protected readonly MetadataPool $metadataPool
     ) {
-        $this->resourceConnection = $resourceConnection;
         $this->connection = $resourceConnection->getConnection();
-        $this->mainTable = $resourceConnection->getTableName($this->mainTable);
-
-        $this->storeManager = $storeManager;
-        $this->filterableAttributeList = $filterableAttributeList;
-        $this->entityCollectionFactory = $entityCollectionFactory;
-        $this->metadataPool = $metadataPool;
+        $this->mainTableName = $resourceConnection->getTableName('amadeco_custom_entity_index_eav_idx');
     }
 
     /**
-     * Regenerate the index for all entities and stores.
+     * Completely rebuild the index using "Copy and Swap" strategy.
      *
-     * This method will truncate the index table and rebuild it for all active
-     * custom entities and their filterable attributes across all stores.
+     * Ensures zero downtime and transaction safety using random table suffixes.
      *
      * @return void
      * @throws LocalizedException
+     * @throws \Exception
      */
     public function reindexAll(): void
     {
+        // 1. Generate random suffixes to avoid table name collisions
+        $suffix = $this->getRandomSuffix();
+        $tmpTableName = $this->resourceConnection->getTableName($this->mainTableName . '_tmp_' . $suffix);
+        $backupTableName = $this->resourceConnection->getTableName($this->mainTableName . '_bak_' . $suffix);
+
         try {
-            if (!$this->connection->isTableExists($this->mainTable)) {
-                throw new LocalizedException(__('Index table does not exist: %1', $this->mainTable));
+            // 2. Prepare Temporary Table
+            // Using createTableByDdl copies structure from live table.
+            // Requires db_schema.xml to have NO Foreign Keys to avoid errno: 121.
+            if ($this->connection->isTableExists($tmpTableName)) {
+                $this->connection->dropTable($tmpTableName);
             }
+            $tableObj = $this->connection->createTableByDdl($this->mainTableName, $tmpTableName);
+            $this->connection->createTable($tableObj);
 
-            $this->connection->truncateTable($this->mainTable);
-
-            $stores = $this->storeManager->getStores();
-            $attributes = $this->getIndexableAttributes();
-
-            if (empty($attributes)) {
-                return;
-            }
-
+            // 3. Index Data into Temporary Table
             $this->connection->beginTransaction();
-
             try {
-                foreach ($stores as $store) {
-                    $storeId = (int)$store->getId();
-                    $entityIds = $this->getAllEntityIds();
+                // Pass false to getStores() to exclude Admin Store (0) and optimize index size.
+                $stores = $this->storeManager->getStores(false);
+                $attributes = $this->getIndexableAttributes();
 
-                    if (empty($entityIds)) {
-                        continue;
+                if (!empty($attributes)) {
+                    foreach ($stores as $store) {
+                        $storeId = (int) $store->getId();
+                        $this->indexStore($storeId, $attributes, $tmpTableName);
                     }
-
-                    $this->processEntityBatches($entityIds, $attributes, $storeId);
                 }
-
                 $this->connection->commit();
             } catch (\Exception $e) {
                 $this->connection->rollBack();
-                throw new LocalizedException(
-                    __('Failed to reindex all entities: %1', $e->getMessage()),
-                    $e
-                );
+                throw $e;
             }
+
+            // 4. Atomic Swap (Live -> Bak, Tmp -> Live)
+            $this->swapTables($tmpTableName, $backupTableName);
+
         } catch (\Exception $e) {
+            // Cleanup: Drop temp table on failure to save space
+            if ($this->connection->isTableExists($tmpTableName)) {
+                $this->connection->dropTable($tmpTableName);
+            }
             throw new LocalizedException(
                 __('An error occurred during full reindexing: %1', $e->getMessage()),
                 $e
@@ -172,38 +145,9 @@ class Fulltext
     }
 
     /**
-     * Process entity batches for indexing.
+     * Reindex specific entity IDs (Partial Reindex).
      *
-     * @param array $entityIds Entity IDs to process
-     * @param array $attributes Attributes to index
-     * @param int $storeId Current store ID
-     * @return void
-     */
-    private function processEntityBatches(array $entityIds, array $attributes, int $storeId): void
-    {
-        $batches = array_chunk($entityIds, self::BATCH_SIZE);
-        foreach ($batches as $batchIds) {
-            $indexedData = $this->fetchIndexData($storeId, $attributes, $batchIds);
-            $this->insertIndexData($indexedData);
-        }
-    }
-
-    /**
-     * Get all active entity IDs to be indexed.
-     *
-     * @return array
-     */
-    private function getAllEntityIds(): array
-    {
-        $collection = $this->entityCollectionFactory->create();
-        $collection->addAttributeToSelect('entity_id');
-        $collection->addAttributeToFilter('is_active', 1);
-
-        return $collection->getAllIds();
-    }
-
-    /**
-     * Reindex specific entity rows.
+     * Updates the live table directly.
      *
      * @param int[] $entityIds
      * @return void
@@ -216,31 +160,25 @@ class Fulltext
         }
 
         try {
-            $this->connection->delete($this->mainTable, ['entity_id IN (?)' => $entityIds]);
-
-            $stores = $this->storeManager->getStores();
-            $attributes = $this->getIndexableAttributes();
-
-            if (empty($attributes)) {
-                return;
-            }
-
             $this->connection->beginTransaction();
-
             try {
-                foreach ($stores as $store) {
-                    $storeId = (int)$store->getId();
-                    $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
-                    $this->insertIndexData($indexedData);
-                }
+                // Remove outdated entries for these entities
+                $this->batchRowsDelete($this->mainTableName, $entityIds);
 
+                $stores = $this->storeManager->getStores(false);
+                $attributes = $this->getIndexableAttributes();
+
+                if (!empty($attributes)) {
+                    foreach ($stores as $store) {
+                        $storeId = (int) $store->getId();
+                        $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
+                        $this->insertIndexData($indexedData, $this->mainTableName);
+                    }
+                }
                 $this->connection->commit();
             } catch (\Exception $e) {
                 $this->connection->rollBack();
-                throw new LocalizedException(
-                    __('Failed to reindex specific entities: %1', $e->getMessage()),
-                    $e
-                );
+                throw new LocalizedException(__('Failed to reindex rows: %1', $e->getMessage()), $e);
             }
         } catch (\Exception $e) {
             throw new LocalizedException(
@@ -251,13 +189,83 @@ class Fulltext
     }
 
     /**
-     * Fetch indexable data for given store, attributes, and entity IDs.
+     * Atomically swap the temporary table with the main table.
      *
-     * @param int $storeId Store ID to index for
-     * @param \Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface[] $attributes Attributes to index
-     * @param int[] $entityIds Entity IDs to index
-     * @return array Structure: [ ['entity_id' => ..., 'attribute_id' => ..., 'store_id' => ..., 'value' => ...], ... ]
-     * @throws LocalizedException
+     * @param string $tmpTableName
+     * @param string $backupTableName
+     * @return void
+     */
+    private function swapTables(string $tmpTableName, string $backupTableName): void
+    {
+        // Drop any stale backup table from previous failed runs
+        if ($this->connection->isTableExists($backupTableName)) {
+            $this->connection->dropTable($backupTableName);
+        }
+
+        // Rename logic:
+        // 1. Current Live Table -> Backup Table
+        // 2. New Temp Table -> Live Table
+        $renameTables = [
+            [
+                'oldName' => $this->mainTableName,
+                'newName' => $backupTableName
+            ],
+            [
+                'oldName' => $tmpTableName,
+                'newName' => $this->mainTableName
+            ]
+        ];
+
+        // Execute Atomic Rename
+        $this->connection->renameTablesBatch($renameTables);
+
+        // Drop the backup table
+        $this->connection->dropTable($backupTableName);
+    }
+
+    /**
+     * Process indexing for a specific store view.
+     *
+     * @param int $storeId
+     * @param CustomEntityAttributeInterface[] $attributes
+     * @param string $targetTable
+     * @return void
+     */
+    private function indexStore(int $storeId, array $attributes, string $targetTable): void
+    {
+        $lastEntityId = 0;
+
+        while (true) {
+            $collection = $this->entityCollectionFactory->create();
+            $collection->addAttributeToSelect('entity_id');
+            $collection->addAttributeToFilter('is_active', 1);
+            $collection->addAttributeToFilter('entity_id', ['gt' => $lastEntityId]);
+            $collection->setOrder('entity_id', Select::SQL_ASC);
+            $collection->setPageSize(self::BATCH_SIZE);
+
+            if ($collection->count() === 0) {
+                break;
+            }
+
+            $entityIds = [];
+            foreach ($collection as $entity) {
+                $id = (int) $entity->getId();
+                $entityIds[] = $id;
+                $lastEntityId = $id;
+            }
+
+            $indexedData = $this->fetchIndexData($storeId, $attributes, $entityIds);
+            $this->insertIndexData($indexedData, $targetTable);
+        }
+    }
+
+    /**
+     * Fetch raw data from EAV tables with store-view scope fallback logic.
+     *
+     * @param int $storeId
+     * @param CustomEntityAttributeInterface[] $attributes
+     * @param int[] $entityIds
+     * @return array<int, array<string, mixed>>
      */
     private function fetchIndexData(int $storeId, array $attributes, array $entityIds): array
     {
@@ -266,133 +274,189 @@ class Fulltext
         $linkField = $this->getEntityLinkField();
 
         foreach ($attributes as $attribute) {
-            $attributeId = (int)$attribute->getId();
+            $attributeId = (int) $attribute->getId();
             $backendType = $attribute->getBackendType();
 
             if (!isset(self::BACKEND_TABLE_MAP[$backendType])) {
                 continue;
             }
 
-            $attributeTableSuffix = self::BACKEND_TABLE_MAP[$backendType];
-            $attributeTable = $this->resourceConnection->getTableName('smile_custom_entity_' . $attributeTableSuffix);
+            $attributeTable = $this->resourceConnection->getTableName(
+                self::TABLE_PREFIX . self::BACKEND_TABLE_MAP[$backendType]
+            );
 
             if (!$this->connection->isTableExists($attributeTable)) {
                 continue;
             }
 
-            // Build the query
-            $select = $this->connection->select();
-            $select->from(['e' => $entityTable], ['entity_id'])
+            // Logic: Join attribute values for Store 0 AND current Store ID
+            // The ORDER BY store_id ASC ensures that when we loop through results,
+            // the Store View specific value overwrites the Admin value.
+            $select = $this->connection->select()
+                ->from(['e' => $entityTable], ['entity_id'])
                 ->joinInner(
                     ['ea' => $attributeTable],
                     "e.{$linkField} = ea.{$linkField}",
-                    [
-                        'value' => 'ea.value'
-                    ]
+                    ['value' => 'ea.value', 'store_id' => 'ea.store_id']
                 )
                 ->where('ea.attribute_id = ?', $attributeId)
                 ->where('ea.store_id IN (?)', [0, $storeId])
-                ->where('e.entity_id IN (?)', $entityIds);
+                ->where('e.entity_id IN (?)', $entityIds)
+                ->order('ea.store_id ' . Select::SQL_ASC);
 
             $rows = $this->connection->fetchAll($select);
 
-            if (empty($rows)) {
-                continue;
+            if (!empty($rows)) {
+                $this->processAttributeRows($rows, $attribute, $attributeId, $storeId, $indexData);
             }
-
-            $this->processAttributeRows($rows, $attribute, $attributeId, $storeId, $indexData);
         }
 
         return $indexData;
     }
 
     /**
-     * Process attribute rows and add to index data.
+     * Route attribute processing based on frontend input type.
      *
-     * @param array $rows The query result rows
-     * @param \Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface $attribute The attribute being processed
-     * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID
-     * @param array &$indexData Reference to the index data array to fill
+     * @param array $rows
+     * @param CustomEntityAttributeInterface $attribute
+     * @param int $attributeId
+     * @param int $storeId
+     * @param array $indexData
      * @return void
      */
     private function processAttributeRows(
         array $rows,
-        $attribute,
+        CustomEntityAttributeInterface $attribute,
         int $attributeId,
         int $storeId,
         array &$indexData
     ): void {
         if ($attribute->getFrontendInput() === 'multiselect') {
-            $this->processMultiselectAttributeRows($rows, $attributeId, $storeId, $indexData);
+            $this->processMultiselectRows($rows, $attributeId, $storeId, $indexData);
         } else {
-            $this->processRegularAttributeRows($rows, $attributeId, $storeId, $indexData);
+            $this->processRegularRows($rows, $attributeId, $storeId, $indexData);
         }
     }
 
     /**
-     * Process multiselect attribute rows.
+     * Process multiselect attributes (exploding comma-separated values).
      *
-     * @param array $rows The query result rows
-     * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID
-     * @param array &$indexData Reference to the index data array to fill
+     * @param array $rows
+     * @param int $attributeId
+     * @param int $storeId
+     * @param array $indexData
      * @return void
      */
-    private function processMultiselectAttributeRows(
+    private function processMultiselectRows(
         array $rows,
         int $attributeId,
         int $storeId,
         array &$indexData
     ): void {
+        $entityRawValues = [];
+        // Flatten rows: store-specific value overrides default (0)
         foreach ($rows as $row) {
-            if (empty($row['value'])) {
+            $entityRawValues[$row['entity_id']] = (string) $row['value'];
+        }
+
+        foreach ($entityRawValues as $entityId => $rawValue) {
+            if ($rawValue === '') {
                 continue;
             }
-
-            $values = explode(',', (string)$row['value']);
-            foreach ($values as $singleValue) {
-                if (!empty($singleValue)) {
-                    $indexData[] = [
-                        'entity_id' => $row['entity_id'],
-                        'attribute_id' => $attributeId,
-                        'store_id' => $storeId,
-                        'value' => trim($singleValue),
-                    ];
+            // Explode CSV, Trim, and De-duplicate
+            $values = array_unique(explode(',', $rawValue));
+            foreach ($values as $val) {
+                $trimVal = trim($val);
+                if ($trimVal !== '') {
+                    $indexData[] = $this->prepareRow($entityId, $attributeId, $storeId, $trimVal);
                 }
             }
         }
     }
 
     /**
-     * Process regular attribute rows.
+     * Process standard scalar attributes.
      *
-     * @param array $rows The query result rows
-     * @param int $attributeId Attribute ID
-     * @param int $storeId Store ID
-     * @param array &$indexData Reference to the index data array to fill
+     * @param array $rows
+     * @param int $attributeId
+     * @param int $storeId
+     * @param array $indexData
      * @return void
      */
-    private function processRegularAttributeRows(
+    private function processRegularRows(
         array $rows,
         int $attributeId,
         int $storeId,
         array &$indexData
     ): void {
+        $processed = [];
+        // Flatten rows: store-specific value overrides default (0)
         foreach ($rows as $row) {
-            if ($row['value'] !== null && $row['value'] !== '') {
-                $indexData[] = [
-                    'entity_id' => $row['entity_id'],
-                    'attribute_id' => $attributeId,
-                    'store_id' => $storeId,
-                    'value' => $row['value'],
-                ];
+            $processed[$row['entity_id']] = (string) $row['value'];
+        }
+
+        foreach ($processed as $entityId => $value) {
+            if ($value !== '') {
+                $indexData[] = $this->prepareRow($entityId, $attributeId, $storeId, $value);
             }
         }
     }
 
     /**
-     * Get entity link field (usually entity_id)
+     * Internal helper to format index row.
+     *
+     * @param int|string $entityId
+     * @param int $attributeId
+     * @param int $storeId
+     * @param string $value
+     * @return array<string, mixed>
+     */
+    private function prepareRow(int|string $entityId, int $attributeId, int $storeId, string $value): array
+    {
+        return [
+            'entity_id'    => (int) $entityId,
+            'attribute_id' => $attributeId,
+            'store_id'     => $storeId,
+            'value'        => $value,
+        ];
+    }
+
+    /**
+     * Insert collected batches into the target index table.
+     *
+     * @param array $indexData
+     * @param string $tableName
+     * @return void
+     */
+    private function insertIndexData(array $indexData, string $tableName): void
+    {
+        if (empty($indexData)) {
+            return;
+        }
+        foreach (array_chunk($indexData, self::BATCH_SIZE) as $batch) {
+            $this->connection->insertMultiple($tableName, $batch);
+        }
+    }
+
+    /**
+     * Batch deletion strategy for row deletion.
+     *
+     * Avoids long transactions and locks by deleting in chunks.
+     *
+     * @param string $tableName
+     * @param array $entityIds
+     * @return void
+     */
+    private function batchRowsDelete(string $tableName, array $entityIds): void
+    {
+        while (!empty($entityIds)) {
+            $batch = array_splice($entityIds, 0, self::BATCH_SIZE);
+            $this->connection->delete($tableName, ['entity_id IN (?)' => $batch]);
+        }
+    }
+
+    /**
+     * Get entity link field (entity_id vs row_id).
      *
      * @return string
      */
@@ -400,15 +464,15 @@ class Fulltext
     {
         try {
             return $this->metadataPool->getMetadata(CustomEntityInterface::class)->getLinkField();
-        } catch (\Exception $e) {
+        } catch (\Exception) {
             return 'entity_id';
         }
     }
 
     /**
-     * Get attributes that should be indexed.
+     * Get attributes configured as indexable.
      *
-     * @return \Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface[]
+     * @return CustomEntityAttributeInterface[]
      */
     private function getIndexableAttributes(): array
     {
@@ -416,40 +480,13 @@ class Fulltext
     }
 
     /**
-     * Insert collected data into the index table.
+     * Generate a random 4-byte hex suffix for table names.
      *
-     * @param array $indexData
-     * @return void
+     * @return string
+     * @throws \Exception
      */
-    private function insertIndexData(array $indexData): void
+    private function getRandomSuffix(): string
     {
-        if (empty($indexData)) {
-            return;
-        }
-
-        $batches = array_chunk($indexData, self::BATCH_SIZE);
-
-        foreach ($batches as $batch) {
-            $dataToInsert = [];
-
-            foreach ($batch as $row) {
-                if (isset($row['entity_id'], $row['attribute_id'], $row['store_id'], $row['value'])) {
-                    if ($row['value'] === null || $row['value'] === '') {
-                        continue;
-                    }
-
-                    $dataToInsert[] = [
-                        'entity_id' => (int)$row['entity_id'],
-                        'attribute_id' => (int)$row['attribute_id'],
-                        'store_id' => (int)$row['store_id'],
-                        'value' => $row['value']
-                    ];
-                }
-            }
-
-            if (!empty($dataToInsert)) {
-                $this->connection->insertMultiple($this->mainTable, $dataToInsert);
-            }
-        }
+        return bin2hex(random_bytes(4));
     }
 }

@@ -17,8 +17,8 @@ declare(strict_types=1);
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
-
 use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
+use Magento\Framework\ObjectManagerInterface;
 
 /**
  * Layer Resolver
@@ -28,25 +28,16 @@ use Magento\Framework\ObjectManager\ResetAfterRequestInterface;
 class Resolver implements ResetAfterRequestInterface
 {
     /**
-     * Filter factory
-     *
-     * @var \Magento\Framework\ObjectManagerInterface
-     */
-    protected $objectManager;
-
-    /**
      * @var Layer
      */
     protected $layer = null;
 
     /**
-     * @param \Magento\Framework\ObjectManagerInterface $objectManager
+     * @param ObjectManagerInterface $objectManager
      */
     public function __construct(
-        \Magento\Framework\ObjectManagerInterface $objectManager
-    ) {
-        $this->objectManager = $objectManager;
-    }
+        protected readonly ObjectManagerInterface $objectManager
+    ) {}
 
     /**
      * Create Catalog Layer by specified type

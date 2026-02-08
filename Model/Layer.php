@@ -175,7 +175,7 @@ class Layer extends DataObject implements ResetAfterRequestInterface
      */
     public function getCurrentStore()
     {
-        return $this->_storeManager->getStore();
+        return $this->storeManager->getStore();
     }
 
     /**

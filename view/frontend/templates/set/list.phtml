@@ -13,10 +13,12 @@
  * @license   https://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  */
 
-/** @var \Amadeco\SmileCustomEntity\Block\SetList $block */
-$_entityCollection = $block->getLoadedEntityCollection();
+/** @var \Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList $block */
+/** @var \Magento\Framework\Escaper $escaper */
+
+$entityCollection = $block->getLoadedEntityCollection();
 ?>
-<?php if (!$_entityCollection->count()): ?>
+<?php if (!$entityCollection->count()): ?>
     <div class="message info empty">
         <div><?= $escaper->escapeHtml(__('We can\'t find products matching the selection.')) ?></div>
     </div>
@@ -24,23 +26,18 @@ $_entityCollection = $block->getLoadedEntityCollection();
     <?= $block->getToolbarHtml() ?>
     <?= $block->getAdditionalHtml() ?>
     <?php
-    if ($block->getMode() === 'grid') {
-        $viewMode = 'grid';
-    } else {
-        $viewMode = 'list';
-    }
+    $viewMode = $block->getMode();
     ?>
     <div class="products wrapper <?= /* @noEscape */ $viewMode ?> products-<?= /* @noEscape */ $viewMode ?>">
         <ol class="products list items product-items">
-            <?php /** @var \Magento\Eav\Api\Data\AttributeSetInterface $_entity */ ?>
-            <?php foreach ($_entityCollection as $_entity) : ?>
+            <?php /** @var \Magento\Eav\Api\Data\AttributeSetInterface $entity */ ?>
+            <?php foreach ($entityCollection as $entity) : ?>
                 <li class="item product product-item">
-                    <?= $block->getParentBlock()->getEntityHtml($_entity) ?>
+                    <?= $block->getParentBlock()->getEntityHtml($entity) ?>
                 </li>
             <?php endforeach ?>
         </ol>
     </div>
 
     <?= $block->getChildBlock('toolbar')->setIsBottom(true)->toHtml() ?>
-    <?php // phpcs:ignore Magento2.Legacy.PhtmlTemplate ?>
 <?php endif ?>

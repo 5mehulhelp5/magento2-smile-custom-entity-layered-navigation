@@ -16,14 +16,13 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block;
 
-use Magento\Framework\View\Element\Template;
-use Magento\Framework\View\Element\Template\Context;
-use Magento\Framework\Exception\LocalizedException;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Resolver as LayerResolver;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\AvailabilityFlagInterface;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\FilterList;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
+use Amadeco\SmileCustomEntityLayeredNavigation\Block\SetList\Toolbar;
+use Magento\Framework\View\Element\Template;
+use Magento\Framework\View\Element\Template\Context;
 
 /**
  * Layered Navigation View Block for Custom Entities.
@@ -34,22 +33,12 @@ class Navigation extends Template
     /**
      * Entity listing toolbar block name
      */
-    private const ENTITY_LISTING_TOOLBAR_BLOCK = 'set_list_toolbar';
+    protected const string ENTITY_LISTING_TOOLBAR_BLOCK = 'set_list_toolbar';
 
     /**
      * @var Layer
      */
-    private Layer $_entityLayer;
-
-    /**
-     * @var FilterList
-     */
-    protected FilterList $filterList;
-
-    /**
-     * @var AvailabilityFlagInterface
-     */
-    protected AvailabilityFlagInterface $visibilityFlag;
+    protected Layer $entityLayer;
 
     /**
      * @param Context $context
@@ -61,13 +50,11 @@ class Navigation extends Template
     public function __construct(
         Context $context,
         LayerResolver $layerResolver,
-        FilterList $filterList,
-        AvailabilityFlagInterface $visibilityFlag,
+        protected readonly FilterList $filterList,
+        protected readonly AvailabilityFlagInterface $visibilityFlag,
         array $data = []
     ) {
-        $this->_entityLayer = $layerResolver->get();
-        $this->filterList = $filterList;
-        $this->visibilityFlag = $visibilityFlag;
+        $this->entityLayer = $layerResolver->get();
         parent::__construct($context, $data);
     }
 
@@ -78,7 +65,7 @@ class Navigation extends Template
      */
     protected function _prepareLayout()
     {
-        foreach ($this->filterList->getFilters($this->_entityLayer) as $filter) {
+        foreach ($this->filterList->getFilters($this->entityLayer) as $filter) {
             $filter->apply($this->getRequest());
         }
 
@@ -105,7 +92,7 @@ class Navigation extends Template
      */
     public function getLayer(): Layer
     {
-        return $this->_entityLayer;
+        return $this->entityLayer;
     }
 
     /**
@@ -113,9 +100,9 @@ class Navigation extends Template
      *
      * @return array
      */
-    public function getFilters()
+    public function getFilters(): array
     {
-        return $this->filterList->getFilters($this->_entityLayer);
+        return $this->filterList->getFilters($this->entityLayer);
     }
 
     /**
@@ -134,9 +121,13 @@ class Navigation extends Template
      *
      * @return string
      */
-    public function getClearUrl()
+    public function getClearUrl(): string
     {
-        return $this->getChildBlock('state')->getClearUrl();
+        $stateBlock = $this->getChildBlock('state');
+        if ($stateBlock) {
+            return $stateBlock->getClearUrl();
+        }
+        return '';
     }
 
     /**
@@ -146,10 +137,9 @@ class Navigation extends Template
      */
     private function configureToolbarBlock(): void
     {
-        /** @var Toolbar $toolbarBlock */
         $toolbarBlock = $this->getLayout()->getBlock(self::ENTITY_LISTING_TOOLBAR_BLOCK);
-        if ($toolbarBlock) {
-            /** @var Collection $collection */
+
+        if ($toolbarBlock instanceof Toolbar) {
             $collection = $this->getLayer()->getEntityCollection();
             $toolbarBlock->setCollection($collection);
         }

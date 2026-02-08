@@ -16,89 +16,164 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer\Filter;
 
-use Magento\Framework\App\ResourceConnection;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\AbstractFilter;
 use Magento\Framework\DB\Select;
-use Magento\Framework\Exception\LocalizedException;
-use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
+use Magento\Framework\DB\Sql\Expression;
+use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
+use Magento\Framework\Model\ResourceModel\Db\Context;
 
 /**
- * Resource model for attribute filter operations.
- * Provides counts for attribute options considering applied filters.
+ * Resource model for custom entity attribute filter operations.
+ *
+ * Handles the database-level application of filters to the collection.
+ * Relies on the flattened Index Table.
+ *
+ * Refactored to remove FIND_IN_SET and optimize for flattened index structure.
  */
-class Attribute extends \Magento\Framework\Model\ResourceModel\Db\AbstractDb
+class Attribute extends AbstractDb
 {
     /**
-     * Initialize connection and define main table name
+     * @var string Main index table alias suffix for filtering
+     */
+    private const string FILTER_TABLE_ALIAS_SUFFIX = '_idx';
+
+    /**
+     * @var string Main index table alias suffix for aggregation (counts)
+     */
+    private const string AGGREGATION_TABLE_ALIAS_SUFFIX = '_agg';
+
+    /**
+     * Attribute constructor.
+     *
+     * @param Context $context
+     * @param string|null $connectionName
+     */
+    public function __construct(
+        Context $context,
+        ?string $connectionName = null
+    ) {
+        parent::__construct($context, $connectionName);
+    }
+
+    /**
+     * Initialize connection and define main table.
      *
      * @return void
      */
-    protected function _construct()
+    protected function _construct(): void
     {
         $this->_init('amadeco_custom_entity_index_eav_idx', 'entity_id');
     }
 
     /**
-     * Apply attribute filter to entity collection
+     * Apply attribute filter to entity collection.
      *
-     * @param $filter
-     * @param int $value
-     * @throws \Magento\Framework\Exception\LocalizedException
+     * Adds an INNER JOIN to the collection's select object.
+     * Strictly filters by the current Store ID.
+     *
+     * @param AbstractFilter $filter
+     * @param int|string|array $value
      * @return $this
      */
-    public function applyFilterToCollection($filter, $value)
+    public function applyFilterToCollection(AbstractFilter $filter, mixed $value): static
     {
         $collection = $filter->getLayer()->getEntityCollection();
         $attribute = $filter->getAttributeModel();
         $connection = $this->getConnection();
-        $tableAlias = $attribute->getAttributeCode() . '_idx';
-        $conditions = [
+
+        $tableAlias = $attribute->getAttributeCode() . self::FILTER_TABLE_ALIAS_SUFFIX;
+        $storeId = (int) $collection->getStoreId();
+        $attributeId = (int) $attribute->getAttributeId();
+
+        // 1. Normalize Input: Always treat value as an array
+        // Multiselects might come as CSV strings or arrays.
+        // Flattened index allows us to use IN (?) for both select and multiselect.
+        $valueArr = is_array($value) ? $value : explode(',', (string) $value);
+
+        // Filter out empty strings to avoid invalid SQL IN () syntax
+        $valueArr = array_filter($valueArr, fn($v) => (string) $v !== '');
+
+        if (empty($valueArr)) {
+            return $this;
+        }
+
+        // 2. Build Value Condition
+        // Uses standard IN (?) clause which leverages the database index on the `value` column.
+        $valueCondition = $connection->quoteInto("{$tableAlias}.value IN (?)", $valueArr);
+
+        // 3. Build Join Conditions
+        // We strictly check store_id = $storeId.
+        $joinConditions = [
             "{$tableAlias}.entity_id = e.entity_id",
-            $connection->quoteInto("{$tableAlias}.attribute_id = ?", $attribute->getAttributeId()),
-            $connection->quoteInto("{$tableAlias}.store_id = ?", $collection->getStoreId()),
-            $connection->quoteInto("{$tableAlias}.value = ?", $value),
+            $connection->quoteInto("{$tableAlias}.attribute_id = ?", $attributeId),
+            $connection->quoteInto("{$tableAlias}.store_id = ?", $storeId),
+            $valueCondition,
         ];
 
         $collection->getSelect()->join(
             [$tableAlias => $this->getMainTable()],
-            implode(' AND ', $conditions),
+            implode(' AND ', $joinConditions),
             []
         );
+
+        // 4. Optimization: Group By Entity ID to handle duplicates from one-to-many joins
+        // This is crucial for multiselects where one entity might match multiple selected values.
+        $collection->getSelect()->group('e.entity_id');
 
         return $this;
     }
 
     /**
-     * Retrieve array with products counts per attribute option
+     * Retrieve array with entity counts per attribute option.
      *
-     * @param \Magento\Catalog\Model\Layer\Filter\FilterInterface $filter
-     * @throws \Magento\Framework\Exception\LocalizedException
-     * @return array
+     * @param AbstractFilter $filter
+     * @return array<string, string|int>
      */
-    public function getCount(\Magento\Catalog\Model\Layer\Filter\FilterInterface $filter)
+    public function getCount(AbstractFilter $filter): array
     {
-        // clone select from collection with filters
+        // 1. Clone Select to isolate count query
         $select = clone $filter->getLayer()->getEntityCollection()->getSelect();
-        // reset columns, order and limitation conditions
-        $select->reset(\Magento\Framework\DB\Select::COLUMNS);
-        $select->reset(\Magento\Framework\DB\Select::ORDER);
-        $select->reset(\Magento\Framework\DB\Select::LIMIT_COUNT);
-        $select->reset(\Magento\Framework\DB\Select::LIMIT_OFFSET);
 
+        // 2. Clean up Select for Aggregation
+        $select->reset(Select::COLUMNS);
+        $select->reset(Select::ORDER);
+        $select->reset(Select::LIMIT_COUNT);
+        $select->reset(Select::LIMIT_OFFSET);
+        $select->reset(Select::GROUP);
+
+        // 3. Remove "Self-Filter" (Multiselect logic)
+        // If we are filtering by "Red", we still want to see counts for "Blue"
+        // in the same attribute filter block.
+        $filterAlias = $filter->getAttributeModel()->getAttributeCode() . self::FILTER_TABLE_ALIAS_SUFFIX;
+        $fromPart = $select->getPart(Select::FROM);
+
+        if (isset($fromPart[$filterAlias])) {
+            unset($fromPart[$filterAlias]);
+            $select->setPart(Select::FROM, $fromPart);
+        }
+
+        // 4. Join Aggregation Table
         $connection = $this->getConnection();
         $attribute = $filter->getAttributeModel();
-        $tableAlias = sprintf('%s_idx', $attribute->getAttributeCode());
+        $aggAlias = $attribute->getAttributeCode() . self::AGGREGATION_TABLE_ALIAS_SUFFIX;
+        $storeId = (int) $filter->getStoreId();
+        $attributeId = (int) $attribute->getAttributeId();
+
         $conditions = [
-            "{$tableAlias}.entity_id = e.entity_id",
-            $connection->quoteInto("{$tableAlias}.attribute_id = ?", $attribute->getAttributeId()),
-            $connection->quoteInto("{$tableAlias}.store_id = ?", $filter->getStoreId()),
+            "{$aggAlias}.entity_id = e.entity_id",
+            $connection->quoteInto("{$aggAlias}.attribute_id = ?", $attributeId),
+            $connection->quoteInto("{$aggAlias}.store_id = ?", $storeId),
         ];
 
         $select->join(
-            [$tableAlias => $this->getMainTable()],
-            join(' AND ', $conditions),
-            ['value', 'count' => new \Zend_Db_Expr("COUNT({$tableAlias}.entity_id)")]
+            [$aggAlias => $this->getMainTable()],
+            implode(' AND ', $conditions),
+            [
+                'value',
+                'count' => new Expression("COUNT(DISTINCT {$aggAlias}.entity_id)")
+            ]
         )->group(
-            "{$tableAlias}.value"
+            "{$aggAlias}.value"
         );
 
         return $connection->fetchPairs($select);

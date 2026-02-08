@@ -27,6 +27,8 @@ class CustomEntityAttributePlugin
     /**
      * Add getIsFilterable and getPosition methods
      *
+     * TODO: Ideally, remove this plugin and use extension_attributes.xml.
+     *
      * @param Attribute $subject
      * @param callable $proceed
      * @param string $method
@@ -35,25 +37,12 @@ class CustomEntityAttributePlugin
      */
     public function aroundCall(Attribute $subject, callable $proceed, $method, $args)
     {
-        switch ($method) {
-            case 'getIsFilterable':
-                return $subject->getData(FilterableAttributeInterface::IS_FILTERABLE) ?
-                    (int)$subject->getData(FilterableAttributeInterface::IS_FILTERABLE) :
-                    FilterableAttributeInterface::NOT_FILTERABLE;
-            case 'setIsFilterable':
-                $subject->setData(FilterableAttributeInterface::IS_FILTERABLE,
-                    isset($args[0]) ? (int)$args[0] : FilterableAttributeInterface::NOT_FILTERABLE
-                );
-                return $subject;
-            case 'getPosition':
-                return $subject->getData(FilterableAttributeInterface::POSITION) ?
-                    (int)$subject->getData(FilterableAttributeInterface::POSITION) :
-                    0;
-            case 'setPosition':
-                $subject->setData(FilterableAttributeInterface::POSITION, isset($args[0]) ? (int)$args[0] : 0);
-                return $subject;
-            default:
-                return $proceed($method, $args);
-        }
+        return match ($method) {
+            'setIsFilterable' => $subject->setData(FilterableAttributeInterface::IS_FILTERABLE, (int)($args[0] ?? FilterableAttributeInterface::NOT_FILTERABLE)),
+            'getIsFilterable' => (int)($subject->getData(FilterableAttributeInterface::IS_FILTERABLE) ?: FilterableAttributeInterface::NOT_FILTERABLE),
+            'setPosition' => $subject->setData(FilterableAttributeInterface::POSITION, (int)($args[0] ?? 0)),
+            'getPosition' => (int)($subject->getData(FilterableAttributeInterface::POSITION) ?: 0),
+            default => $proceed($method, $args),
+        };
     }
 }

@@ -16,13 +16,13 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\Collection;
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\CollectionFactory as CustomEntityAttributeCollectionFactory;
 use Magento\Eav\Model\Entity\Attribute\Source\Table as TableSource;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Store\Model\StoreManagerInterface;
 use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\Collection;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\Attribute\CollectionFactory as CustomEntityAttributeCollectionFactory;
 
 /**
  * Provides list of filterable attributes for the layer context.
@@ -30,26 +30,13 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\CustomEntity\
 class FilterableAttributeList implements FilterableAttributeListInterface
 {
     /**
-     * @var CustomEntityAttributeCollectionFactory
-     */
-    private CustomEntityAttributeCollectionFactory $attributeCollectionFactory;
-
-    /**
-     * @var StoreManagerInterface
-     */
-    private StoreManagerInterface $storeManager;
-
-    /**
      * @param CustomEntityAttributeCollectionFactory $attributeCollectionFactory
      * @param StoreManagerInterface $storeManager
      */
     public function __construct(
-        CustomEntityAttributeCollectionFactory $attributeCollectionFactory,
-        StoreManagerInterface $storeManager
-    ) {
-        $this->attributeCollectionFactory = $attributeCollectionFactory;
-        $this->storeManager = $storeManager;
-    }
+        protected readonly CustomEntityAttributeCollectionFactory $attributeCollectionFactory,
+        protected readonly StoreManagerInterface $storeManager
+    ) {}
 
     /**
      * Get filterable attributes based on frontend input type for the given layer's attribute set.

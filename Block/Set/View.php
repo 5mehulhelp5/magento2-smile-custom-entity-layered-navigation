@@ -10,10 +10,7 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Block\Set;
 
-use Smile\CustomEntity\Model\CustomEntity;
-use Smile\CustomEntity\Block\Set\View as SmileCustomEntityView;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Set\SetList\Toolbar as ToolbarModel;
-
 use Magento\Eav\Api\Data\AttributeSetInterface;
 use Magento\Framework\Api\SearchCriteriaBuilder;
 use Magento\Framework\Api\SearchCriteriaBuilderFactory;
@@ -26,6 +23,8 @@ use Magento\Framework\View\Element\Template;
 use Smile\CustomEntity\Api\CustomEntityRepositoryInterface;
 use Smile\CustomEntity\Api\Data\CustomEntityInterface;
 use Smile\CustomEntity\Block\Html\Pager;
+use Smile\CustomEntity\Block\Set\View as SmileCustomEntityView;
+use Smile\CustomEntity\Model\CustomEntity;
 
 /**
  * Attribute set view block.
@@ -50,7 +49,13 @@ class View extends SmileCustomEntityView
         SearchCriteriaBuilderFactory $searchCriteriaBuilderFactory,
         array $data = []
     ) {
-        parent::__construct($context, $registry, $customEntityRepository, $searchCriteriaBuilderFactory, $data);
+        parent::__construct(
+            $context, 
+            $registry, 
+            $customEntityRepository, 
+            $searchCriteriaBuilderFactory, 
+            $data
+        );
     }
 
     /**

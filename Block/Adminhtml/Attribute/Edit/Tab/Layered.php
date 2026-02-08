@@ -29,11 +29,6 @@ use Smile\CustomEntity\Api\Data\CustomEntityAttributeInterface;
 class Layered extends Generic
 {
     /**
-     * @var FilterableOptions
-     */
-    private FilterableOptions $filterableOptions;
-
-    /**
      * Constructor.
      *
      * @param Context $context
@@ -46,11 +41,10 @@ class Layered extends Generic
         Context $context,
         Registry $registry,
         FormFactory $formFactory,
-        FilterableOptions $filterableOptions,
+        private readonly FilterableOptions $filterableOptions,
         array $data = []
     ) {
         parent::__construct($context, $registry, $formFactory, $data);
-        $this->filterableOptions = $filterableOptions;
     }
 
     /**

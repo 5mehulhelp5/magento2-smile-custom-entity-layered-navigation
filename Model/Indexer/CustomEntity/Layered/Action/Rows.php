@@ -24,18 +24,11 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Indexer\Fullt
 class Rows
 {
     /**
-     * @var ResourceIndexer
-     */
-    private $resourceIndexer;
-
-    /**
      * @param ResourceIndexer $resourceIndexer
      */
     public function __construct(
-        ResourceIndexer $resourceIndexer
-    ) {
-        $this->resourceIndexer = $resourceIndexer;
-    }
+        protected readonly ResourceIndexer $resourceIndexer
+    ) {}
 
     /**
      * Execute partial indexation by entities IDs

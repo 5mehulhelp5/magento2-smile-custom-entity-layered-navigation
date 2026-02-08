@@ -16,15 +16,18 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter;
 
-use Magento\Framework\Exception\LocalizedException;
-use Magento\Framework\Serialize\SerializerInterface;
-use Magento\Store\Model\StoreManagerInterface;
-use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
-use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter\ItemFactory;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer\Filter\Attribute as AttributeResource;
 use Amadeco\SmileCustomEntityLayeredNavigation\Model\ResourceModel\Layer\Filter\AttributeFactory;
+use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
+use Magento\Framework\App\RequestInterface;
+use Magento\Framework\Exception\LocalizedException;
+use Magento\Framework\Filter\StripTags;
+use Magento\Framework\Serialize\SerializerInterface;
+use Magento\Framework\Stdlib\StringUtils;
+use Magento\Store\Model\StoreManagerInterface;
+use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
 
 /**
  * Boolean Filter for Custom Entity attributes
@@ -34,7 +37,7 @@ class Boolean extends AbstractFilter
     /**
      * @var AttributeResource
      */
-    protected AttributeResource $_resource;
+    protected AttributeResource $resource;
 
     /**
      * @param ItemFactory $filterItemFactory
@@ -42,8 +45,8 @@ class Boolean extends AbstractFilter
      * @param Layer $layer
      * @param DataBuilder $itemDataBuilder
      * @param AttributeFactory $filterAttributeFactory
-     * @param \Magento\Framework\Stdlib\StringUtils $string
-     * @param \Magento\Framework\Filter\StripTags $tagFilter
+     * @param StringUtils $string
+     * @param StripTags $tagFilter
      * @param array $data
      */
     public function __construct(
@@ -52,15 +55,21 @@ class Boolean extends AbstractFilter
         Layer $layer,
         DataBuilder $itemDataBuilder,
         AttributeFactory $filterAttributeFactory,
-        \Magento\Framework\Stdlib\StringUtils $string,
-        \Magento\Framework\Filter\StripTags $tagFilter,
+        protected readonly StringUtils $stringUtil,
+        protected readonly StripTags $tagFilter,
         array $data = []
     ) {
-        $this->_resource = $filterAttributeFactory->create();
-        $this->string = $string;
+        $this->resource = $filterAttributeFactory->create();
+
         $this->_requestVar = 'attribute';
-        $this->tagFilter = $tagFilter;
-        parent::__construct($filterItemFactory, $storeManager, $layer, $itemDataBuilder, $data);
+
+        parent::__construct(
+            $filterItemFactory,
+            $storeManager,
+            $layer,
+            $itemDataBuilder,
+            $data
+        );
     }
 
     /**
@@ -70,27 +79,30 @@ class Boolean extends AbstractFilter
      */
     protected function _getResource()
     {
-        return $this->_resource;
+        return $this->resource;
     }
 
     /**
      * Apply filter to collection
      *
-     * @param \Magento\Framework\App\RequestInterface $request
+     * @param RequestInterface $request
      * @return $this
      * @throws LocalizedException
      */
-    public function apply(\Magento\Framework\App\RequestInterface $request): self
+    public function apply(RequestInterface $request): self
     {
         $filter = $request->getParam($this->getRequestVar());
-
-        if ($filter !== null) {
-            $booleanFilter = (int)$filter;
-            $text = $booleanFilter ? __('Yes') : __('No');
-            $this->_getResource()->applyFilterToCollection($this, $filter);
-            $this->getLayer()->getState()->addFilter($this->_createItem($text, $filter));
-            $this->_items = [];
+        if ($filter === null) {
+            return $this;
         }
+
+        $booleanFilter = (int)$filter;
+        $text = $booleanFilter ? __('Yes') : __('No');
+        $this->_getResource()->applyFilterToCollection($this, $filter);
+        $this->getLayer()->getState()->addFilter($this->_createItem($text, $filter));
+
+        $this->_items = [];
+
         return $this;
     }
 
@@ -110,9 +122,9 @@ class Boolean extends AbstractFilter
             if (is_array($option['value'])) {
                 continue;
             }
-            if ($this->string->strlen($option['value'])) {
+            if ($this->stringUtil->strlen($option['value'])) {
                 // Check filter type
-                if ($this->getAttributeIsFilterable($attribute) == self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
+                if ($this->getAttributeIsFilterable($attribute) === self::ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS) {
                     if (!empty($optionsCount[$option['value']])) {
                         $this->itemDataBuilder->addItemData(
                             $this->tagFilter->filter($option['label']),
@@ -124,7 +136,7 @@ class Boolean extends AbstractFilter
                     $this->itemDataBuilder->addItemData(
                         $this->tagFilter->filter($option['label']),
                         $option['value'],
-                        isset($optionsCount[$option['value']]) ? $optionsCount[$option['value']] : 0
+                        $optionsCount[$option['value']] ?? 0
                     );
                 }
             }

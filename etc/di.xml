@@ -47,10 +47,4 @@
             </argument>
         </arguments>
     </type>
-
-    <type name="Smile\CustomEntity\Model\CustomEntity\Attribute">
-        <plugin name="Amadeco_SmileCustomEntityLayeredNavigation::addAttributes"
-                type="Amadeco\SmileCustomEntityLayeredNavigation\Plugin\CustomEntityAttributePlugin"
-                sortOrder="10" />
-    </type>
 </config>

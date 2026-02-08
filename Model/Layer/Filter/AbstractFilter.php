@@ -16,21 +16,22 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter;
 
+use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
+use Magento\Catalog\Model\Layer\Filter\FilterInterface;
+use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
 use Magento\Framework\DataObject;
+use Magento\Framework\App\RequestInterface;
 use Magento\Framework\Exception\LocalizedException;
 use Magento\Framework\Serialize\SerializerInterface;
-use Magento\Catalog\Model\Layer\Filter\FilterInterface;
 use Magento\Store\Model\StoreManagerInterface;
-use Magento\Catalog\Model\Layer\Filter\Item\DataBuilder;
 use Smile\CustomEntity\Model\ResourceModel\CustomEntity\Collection;
-use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer;
 
 /**
  * Abstract Filter Model for Custom Entity Layered Navigation
  */
 abstract class AbstractFilter extends DataObject implements FilterInterface
 {
-    const ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS = 1;
+    public const int ATTRIBUTE_OPTIONS_ONLY_WITH_RESULTS = 1;
 
     /**
      * Request variable name with filter value
@@ -47,34 +48,6 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     protected $_items;
 
     /**
-     * Filter item factory
-     *
-     * @var ItemFactory
-     */
-    protected $_filterItemFactory;
-
-    /**
-     * Store manager
-     *
-     * @var StoreManagerInterface
-     */
-    protected $_storeManager;
-
-    /**
-     * Catalog layer
-     *
-     * @var Layer
-     */
-    protected $_entityLayer;
-
-    /**
-     * Item Data Builder
-     *
-     * @var DataBuilder
-     */
-    protected $itemDataBuilder;
-
-    /**
      * @param ItemFactory $filterItemFactory
      * @param StoreManagerInterface $storeManager
      * @param Layer $layer
@@ -82,17 +55,14 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      * @param array $data
      */
     public function __construct(
-        ItemFactory $filterItemFactory,
-        StoreManagerInterface $storeManager,
-        Layer $layer,
-        DataBuilder $itemDataBuilder,
+        protected readonly ItemFactory $filterItemFactory,
+        protected readonly StoreManagerInterface $storeManager,
+        protected readonly Layer $layer,
+        protected readonly DataBuilder $itemDataBuilder,
         array $data = []
     ) {
-        $this->_filterItemFactory = $filterItemFactory;
-        $this->_storeManager = $storeManager;
-        $this->_entityLayer = $layer;
-        $this->itemDataBuilder = $itemDataBuilder;
         parent::__construct($data);
+
         if ($this->hasAttributeModel()) {
             $this->_requestVar = $this->getAttributeModel()->getAttributeCode();
         }
@@ -179,11 +149,11 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     /**
      * Apply filter to collection
      *
-     * @param \Magento\Framework\App\RequestInterface $request
+     * @param RequestInterface $request
      * @return $this
      * @SuppressWarnings(PHPMD.UnusedFormalParameter)
      */
-    public function apply(\Magento\Framework\App\RequestInterface $request)
+    public function apply(RequestInterface $request)
     {
         return $this;
     }
@@ -195,7 +165,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      */
     public function getLayer(): Layer
     {
-        return $this->_entityLayer;
+        return $this->layer;
     }
 
     /**
@@ -243,7 +213,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
      */
     protected function _createItem($label, $value, $count = 0)
     {
-        return $this->_filterItemFactory->create()
+        return $this->filterItemFactory->create()
             ->setFilter($this)
             ->setLabel($label)
             ->setValue($value)
@@ -319,7 +289,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     {
         $storeId = $this->_getData('store_id');
         if ($storeId === null) {
-            $storeId = $this->_storeManager->getStore()->getId();
+            $storeId = $this->storeManager->getStore()->getId();
         }
         return $storeId;
     }
@@ -344,7 +314,7 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     {
         $websiteId = $this->_getData('website_id');
         if ($websiteId === null) {
-            $websiteId = $this->_storeManager->getStore()->getWebsiteId();
+            $websiteId = $this->storeManager->getStore()->getWebsiteId();
         }
         return $websiteId;
     }
@@ -371,15 +341,15 @@ abstract class AbstractFilter extends DataObject implements FilterInterface
     }
 
     /**
-     * Get option text from frontend model by option id
+     * Get Option Text label for a given value ID.
      *
-     * @param   int $optionId
-     * @throws \Magento\Framework\Exception\LocalizedException
-     * @return  string|bool
+     * @param int|string $value
+     * @return string|bool
+     * @throws LocalizedException
      */
-    protected function getOptionText($optionId)
+    protected function getOptionText($value)
     {
-        return $this->getAttributeModel()->getFrontend()->getOption($optionId);
+        return $this->getAttributeModel()->getFrontend()->getOption($value);
     }
 
     /**

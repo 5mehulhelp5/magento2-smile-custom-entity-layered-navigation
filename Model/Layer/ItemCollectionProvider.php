@@ -25,26 +25,13 @@ use Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\ItemCollectionProvide
 class ItemCollectionProvider implements ItemCollectionProviderInterface
 {
     /**
-    * @var StoreManagerInterface
-    */
-    private StoreManagerInterface $storeManager;
-
-    /**
-     * @var CustomEntityCollectionFactory
-     */
-    private CustomEntityCollectionFactory $entityCollectionFactory;
-
-    /**
      * @param StoreManagerInterface $storeManager
      * @param CustomEntityCollectionFactory $entityCollectionFactory
      */
     public function __construct(
-        StoreManagerInterface $storeManager,
-        CustomEntityCollectionFactory $entityCollectionFactory
-    ) {
-        $this->storeManager = $storeManager;
-        $this->entityCollectionFactory = $entityCollectionFactory;
-    }
+        protected readonly StoreManagerInterface $storeManager,
+        protected readonly CustomEntityCollectionFactory $entityCollectionFactory
+    ) {}
 
     /**
      * @param AttributeSetInterface $entity

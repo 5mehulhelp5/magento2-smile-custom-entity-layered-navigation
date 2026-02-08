@@ -16,9 +16,9 @@ declare(strict_types=1);
 
 namespace Amadeco\SmileCustomEntityLayeredNavigation\Model\Layer\Filter;
 
+use Magento\Catalog\Model\Layer\Filter\Item as NativeItem;
+
 /**
- * Layer Filter Item Model
- * Represents a single filter option (e.g., Red color, Yes value).
- * Provides methods to get URLs for applying/removing this specific option.
+ * Filter item model for Custom Entities.
  */
-class Item extends \Magento\Catalog\Model\Layer\Filter\Item {}
+class Item extends NativeItem {}

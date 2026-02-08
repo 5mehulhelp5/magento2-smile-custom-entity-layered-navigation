@@ -1,10 +1,4 @@
 {
-    "smile_custom_entity_eav_attribute": {
-        "column": {
-            "is_filterable": true,
-            "position": true
-        }
-    },
     "amadeco_custom_entity_index_eav_idx": {
         "column": {
             "index_id": true,
@@ -20,10 +14,7 @@
             "AMADECO_CUSTOM_ENTITY_INDEX_EAV_IDX_ATTRIBUTE_ID": true
         },
         "constraint": {
-            "PRIMARY": true,
-            "FK_702DC5B1AC405FA46F10AC37144D6459": true,
-            "AMADECO_CUSTOM_ENTT_IDX_EAV_IDX_ATTR_ID_EAV_ATTR_ATTR_ID": true,
-            "AMADECO_CUSTOM_ENTITY_INDEX_EAV_IDX_STORE_ID_STORE_STORE_ID": true
+            "PRIMARY": true
         }
     }
 }
